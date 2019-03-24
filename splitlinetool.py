@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
+from builtins import range
+from qgis.PyQt.QtCore import *
+from qgis.PyQt.QtWidgets import *
+from qgis.PyQt.QtGui import *
 from qgis.core import *
 from qgis.gui import *
 import math
@@ -17,7 +19,7 @@ class SplitLineTool(QgsMapTool):
 
     def canvasPressEvent(self, event):
         layer = self.canvas.currentLayer()
-        if not layer or layer.type() != QgsMapLayer.VectorLayer or layer.geometryType() != QGis.Line:
+        if not layer or layer.type() != QgsMapLayer.VectorLayer or layer.geometryType() != QgsWkbTypes.LineGeometry:
             return
         button_type = event.button()
         pnt = self.toMapCoordinates(event.pos())
@@ -53,8 +55,8 @@ class SplitLineTool(QgsMapTool):
                 line1.append(minDistPoint)
                 line2 = polyline[afterVertex:]
                 line2.insert(0, minDistPoint)
-                self.createFeature(QgsGeometry.fromPolyline(line2), f)
-                self.editFeature(QgsGeometry.fromPolyline(line1), f, True)
+                self.createFeature(QgsGeometry.fromPolylineXY(line2), f)
+                self.editFeature(QgsGeometry.fromPolylineXY(line1), f, True)
                 self.canvas.currentLayer().removeSelection()
 
     def createFeature(self, geom, feat):
@@ -71,7 +73,7 @@ class SplitLineTool(QgsMapTool):
         f.setGeometry(geom)
 
         # add attribute fields to feature
-        fields = layer.pendingFields()
+        fields = layer.fields()
         f.initAttributes(fields.count())
 
         if feat is None:
@@ -87,7 +89,7 @@ class SplitLineTool(QgsMapTool):
         settings = QSettings()
         disable_attributes = settings.value("/qgis/digitizing/disable_enter_attribute_values_dialog", False, type=bool)
         if disable_attributes or feat is not None:
-            if layer.geometryType() == QGis.Line:
+            if layer.geometryType() == QgsWkbTypes.LineGeometry:
                 layer.addFeature(f)
                 layer.endEditCommand()
             else:
@@ -95,7 +97,8 @@ class SplitLineTool(QgsMapTool):
         else:
             dlg = self.iface.getFeatureForm(layer, f)
             if dlg.exec_():
-                if layer.geometryType() == QGis.Line:
+                if layer.geometryType() == QgsWkbTypes.LineGeometry:
+                    layer.addFeature(f)
                     layer.endEditCommand()
                 else:
                     QMessageBox.warning(None, "Warning", "Select Line layer!")
@@ -130,7 +133,7 @@ class SplitLineTool(QgsMapTool):
     def closestPointOfGeometry(self,point,geom):
         #フィーチャとの距離が近いかどうかを確認
         near = False
-        (dist, minDistPoint, afterVertex)=geom.closestSegmentWithContext(point)
+        (dist, minDistPoint, afterVertex, leftOf) = geom.closestSegmentWithContext(point)
         d = self.canvas.mapUnitsPerPixel() * 8
         if math.sqrt(dist) < d:
             near = True
@@ -153,7 +156,7 @@ class SplitLineTool(QgsMapTool):
             return True,f[0]
 
     def check_selection(self,layer):
-        featid_list = layer.selectedFeaturesIds()
+        featid_list = layer.selectedFeatureIds()
         if len(featid_list) > 0:
             return True,featid_list
         else:
@@ -200,4 +203,4 @@ class SplitLineTool(QgsMapTool):
     def isEditTool(self):
         return True
     def log(self,msg):
-        QgsMessageLog.logMessage(msg, 'MyPlugin',QgsMessageLog.INFO)
+        QgsMessageLog.logMessage(msg, 'MyPlugin',Qgis.Info)

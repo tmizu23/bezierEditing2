@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
-
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
+from __future__ import absolute_import
+from builtins import zip
+from builtins import range
+from qgis.PyQt.QtCore import *
+from qgis.PyQt.QtWidgets import *
+from qgis.PyQt.QtGui import *
 from qgis.core import *
 from qgis.gui import *
-from fitCurves import *
+from .fitCurves import *
 import math
 import numpy as np
-from fitCurves import *
-
+from .fitCurves import *
 class BezierEditingTool(QgsMapTool):
     def __init__(self, canvas,iface):
         QgsMapTool.__init__(self, canvas)
@@ -32,11 +34,11 @@ class BezierEditingTool(QgsMapTool):
         self.snapavoidbool = True
         self.featid = None # 編集オブジェクトのid
         self.selected_point_idx = None
-        self.rbl = QgsRubberBand(self.canvas, QGis.Line)  # 補間ライン
+        self.rbl = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)  # 補間ライン
         color = QColor(255, 0, 0,150)
         self.rbl.setColor(color)
         self.rbl.setWidth(2)
-        self.edit_rbl = QgsRubberBand(self.canvas, QGis.Line)
+        self.edit_rbl = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
         self.edit_rbl.setColor(QColor(255, 255, 0, 150))
         self.edit_rbl.setWidth(2)
         self.snapmarker = QgsVertexMarker(self.canvas)
@@ -56,7 +58,6 @@ class BezierEditingTool(QgsMapTool):
         self.tolerance = 1
         self.mode = "bezier"
         self.snapmarker.hide()
-
     ####### キー、キャンパスイベント
     def keyPressEvent(self, event):
         if self.mode == "bezier":
@@ -66,7 +67,6 @@ class BezierEditingTool(QgsMapTool):
                 self.ctrl = True
             if event.key() == Qt.Key_Shift:
                 self.shift = True
-
     def keyReleaseEvent(self, event):
         if self.mode == "bezier":
             if event.key() == Qt.Key_Alt:
@@ -75,7 +75,6 @@ class BezierEditingTool(QgsMapTool):
                 self.ctrl = False
             if event.key() == Qt.Key_Shift:
                 self.shift = False
-
     def canvasPressEvent(self, event):
         layer = self.canvas.currentLayer()
         if not layer or layer.type() != QgsMapLayer.VectorLayer:
@@ -85,19 +84,17 @@ class BezierEditingTool(QgsMapTool):
         #self.log("{}".format(snaptype))
         if self.mode == "bezier":
             self.moveFlag = False
-
             if event.button() == Qt.RightButton:
                 # 右クリックで確定
                 if self.editing:
                     self.finish_drawing(layer)
                 else:
-                    if layer.geometryType() == QGis.Polygon:
+                    if layer.geometryType() == QgsWkbTypes.PolygonGeometry:
                         QMessageBox.warning(None, "Warning", u"ポリゴンはベジエに変換できません")
                         return
                     self.start_modify(layer,orgpoint)
             elif event.button() == Qt.LeftButton:
                 # 左クリック
-
                 if self.ctrl:
                     # アンカーと重なっていてもアンカーを追加したいとき。ポリゴンを閉じたいときなど。
                     if snaptype[1]:
@@ -150,13 +147,11 @@ class BezierEditingTool(QgsMapTool):
                         pnt = self.ppoints[int(idx / 2)]
                         self.cpoints[idx] = pnt
                         self.moveControlPoint(idx, pnt)
-
                 else:
                     # a. コントロールポイントの移動
                     # b. ポイントの移動
                     # c. 新規ポイントの追加
                     # 判定の順番が重要
-
                     # 「ポイントの移動」かどうか
                     if snaptype[1]:
                         self.mouse_state = "move_anchor"
@@ -171,7 +166,6 @@ class BezierEditingTool(QgsMapTool):
                         self.history.append({"state": "move_handle", "pointidx": self.selected_point_idx, "point": point[2]})
                         # if len(self.history) > 5:
                         #     del self.history[0]
-
                     else:
                     # 上のどれでもなければ「新規ポイント追加」
                         self.editing = True
@@ -189,7 +183,7 @@ class BezierEditingTool(QgsMapTool):
                 if self.editing:
                     self.finish_drawing(layer)
                 else:
-                    if layer.geometryType() == QGis.Polygon:
+                    if layer.geometryType() == QgsWkbTypes.PolygonGeometry:
                         QMessageBox.warning(None, "Warning", u"ポリゴンはベジエに変換できません")
                         return
                     self.start_modify(layer,orgpoint)
@@ -200,21 +194,19 @@ class BezierEditingTool(QgsMapTool):
                     self.editing = True
                     #self.modify = True
                     self.mouse_state = "draw_updateline"
-                    self.edit_rbl.reset(QGis.Line)
+                    self.edit_rbl.reset(QgsWkbTypes.LineGeometry)
                     self.edit_rbl.addPoint(point[3])
-
                 elif not self.editing:
                     #新規作成なら
                     self.editing = True
                     self.mouse_state = "draw_newline"
-                    self.rbl.reset(QGis.Line)  # ベイジライン
+                    self.rbl.reset(QgsWkbTypes.LineGeometry)  # ベイジライン
                     self.rbl.addPoint(orgpoint)  # 最初のポイントは同じ点が2つ追加される仕様？
     def canvasMoveEvent(self, event):
         layer = self.canvas.currentLayer()
         if not layer or layer.type() != QgsMapLayer.VectorLayer:
             return
         orgpoint, snaptype, point, snapidx = self.getSnapPoint(event, layer)
-
         if self.mode == "bezier":
             #self.log("{}".format(self.mouse_state))
             self.moveFlag = True
@@ -263,7 +255,6 @@ class BezierEditingTool(QgsMapTool):
         if not layer or layer.type() != QgsMapLayer.VectorLayer:
             return
         orgpoint, snaptype, point, _ = self.getSnapPoint(event, layer)
-
         if self.mode == "bezier":
             self.selected_point_idx = None
             self.mouse_state="free"
@@ -277,12 +268,10 @@ class BezierEditingTool(QgsMapTool):
                 elif self.mouse_state == "draw_newline":
                     self.draw_newline(snaptype)
                 self.mouse_state = "free"
-
         if self.show_anchor:
             self.showBezierMarker()
         else:
             self.hideBezierMarker()
-
     ####### イベント処理からの呼び出し
     # ベジエ関係
     def start_modify(self,layer,orgpoint):
@@ -297,15 +286,14 @@ class BezierEditingTool(QgsMapTool):
                 self.modify = True
             else:
                 QMessageBox.warning(None, "Warning", u"他のツールで編集されたオブジェクトはベジエに変換できません")
-
     def finish_drawing(self,layer):
         if len(self.ppoints) >= 1:
             # 作成するオブジェクトをgeomに変換。修正するためのフィーチャーも取得
             type = layer.geometryType()
-            if type == QGis.Polygon:
-                geom = QgsGeometry().fromPolygon([self.points])
+            if type == QgsWkbTypes.PolygonGeometry:
+                geom = QgsGeometry.fromPolygonXY([self.points])
             else:
-                geom = QgsGeometry().fromPolyline(self.points)
+                geom = QgsGeometry.fromPolylineXY(self.points)
 
             if self.modify:
                 feature = self.getFeatureById(layer, self.featid)
@@ -330,7 +318,7 @@ class BezierEditingTool(QgsMapTool):
         # コントロールポイントを更新（ベジエも更新するために強制的に呼び出す）
         #self.log("update")
         p = self.ppoints[self.selected_point_idx]
-        pb = QgsPoint(p[0] - (point[0] - p[0]), p[1] - (point[1] - p[1]))
+        pb = QgsPointXY(p[0] - (point[0] - p[0]), p[1] - (point[1] - p[1]))
         idx = self.selected_point_idx * 2
         self.moveControlPoint(idx, pb)
         self.moveControlPoint(idx + 1, point)
@@ -365,10 +353,8 @@ class BezierEditingTool(QgsMapTool):
             #self.log("update1")
     # アンドゥ処理
     def undo(self):
-
         if len(self.history)>0:
             act = self.history.pop()
-
             if act["state"]=="add_anchor":
                 self.deletePoint(act["pointidx"])
             elif act["state"]=="move_anchor":
@@ -408,12 +394,10 @@ class BezierEditingTool(QgsMapTool):
             self.featid = None
             self.editing = False
             self.modify = False
-
         if self.show_anchor:
             self.showBezierMarker()
         else:
             self.hideBezierMarker()
-
     ########ベジエ操作
     # 新規ポイントを追加
     def insertNewPoint(self, idx, point):
@@ -429,7 +413,6 @@ class BezierEditingTool(QgsMapTool):
         # コントロールポイント用ラインの追加（両側）
         self.addNewRubberBand(self.rbcls, 2 * idx , point)
         self.addNewRubberBand(self.rbcls, 2 * idx , point)
-
         pointsA=[]
         pointsB=[]
         # 右側. idxが右端だったら右側はなし
@@ -448,7 +431,6 @@ class BezierEditingTool(QgsMapTool):
             pointsB = self.bezier(p1, c1, p2, c2)
         #self.log("idx:{}".format(idx))
         #self.log("pointsA:{}".format(len(self.points)))
-
         if idx==0: #最初のアンカーは追加するだけなので、表示しない
             pass
         elif idx==1 and idx==len(self.ppoints)-1: #新規追加の2点目のとき。最初の表示
@@ -479,7 +461,6 @@ class BezierEditingTool(QgsMapTool):
             points = self.bezier(p1, c1, p2, c2)
             self.points[self.bezier_num * (idx - 1):self.bezier_num * (idx + 1) + 1] = points
             self.setRubberBandPoints(self.points, self.rbl)
-
         del self.cpoints[2 * idx]
         self.removeMarker(self.cmarkers, 2 * idx)
         self.removeRubberBand(self.rbcls, 2 * idx)
@@ -492,7 +473,7 @@ class BezierEditingTool(QgsMapTool):
     # コントロールポイントのラインを移動
     def moveControlPoint(self, idx, point):
         #コントロールポイントのラインの終点を移動
-        self.rbcls[idx].movePoint(1, point)
+        self.rbcls[idx].movePoint(1, point,0)
         # コントロールポイントのマーカーを移動
         self.cmarkers[idx].setCenter(point)
         self.cpoints[idx] = point
@@ -501,14 +482,14 @@ class BezierEditingTool(QgsMapTool):
         if len(self.ppoints) > 1:
             #右側
             if idx % 2 == 1 and idx < len(self.cpoints)-1:
-                idxP = idx / 2
+                idxP = idx // 2
                 p1 = self.ppoints[idxP]
                 p2 = self.ppoints[idxP + 1]
                 c1 = self.cpoints[idx]
                 c2 = self.cpoints[idx + 1]
             #左側
             elif idx % 2 == 0 and idx >= 1:
-                idxP = (idx - 1) / 2
+                idxP = (idx - 1) // 2
                 p1 = self.ppoints[idxP]
                 p2 = self.ppoints[idxP + 1]
                 c1 = self.cpoints[idx - 1]
@@ -523,10 +504,10 @@ class BezierEditingTool(QgsMapTool):
     def movePoint(self, idx, point):
         diff = point - self.ppoints[idx]
         # コントロールポイントのラインを移動
-        self.rbcls[idx * 2].movePoint(0, point)
-        self.rbcls[idx * 2+1].movePoint(0, point)
-        self.rbcls[idx * 2].movePoint(1, self.cpoints[idx * 2]+diff)
-        self.rbcls[idx * 2+1].movePoint(1, self.cpoints[idx * 2+1]+diff)
+        self.rbcls[idx * 2].movePoint(0, point,0)
+        self.rbcls[idx * 2+1].movePoint(0, point,0)
+        self.rbcls[idx * 2].movePoint(1, self.cpoints[idx * 2]+diff,0)
+        self.rbcls[idx * 2+1].movePoint(1, self.cpoints[idx * 2+1]+diff,0)
         # ポイントを移動
         self.pmarkers[idx].setCenter(point)
         self.ppoints[idx] = point
@@ -559,7 +540,7 @@ class BezierEditingTool(QgsMapTool):
         self.removeAllMarker(self.pmarkers)  # ポイントマーカーの削除
         self.removeAllMarker(self.cmarkers)  # コントロールポイントマーカーの削除
         self.removeAllRubberBand(self.rbcls)  # コントロールポイントのラインの削除
-        self.rbl.reset(QGis.Line)  # ベイジライン
+        self.rbl.reset(QgsWkbTypes.LineGeometry)  # ベイジライン
         self.rbcls = []  # コントロールライン
         self.pmarkers=[]
         self.cmarkers=[]
@@ -581,17 +562,16 @@ class BezierEditingTool(QgsMapTool):
             # 編集されていても偶然、あまりが1になる場合は、変換してしまう。
             return False
         #51個ずつ取り出す。間の点は重複させる。最後の要素は余分なので取り除く。
-
         points = [polyline[i:i + self.bezier_num+1] for i in range(0, len(polyline), self.bezier_num)][:-1]
         #self.log("{}".format(points))
         for i, points_i in enumerate(points):
             ps, cs, pe, ce = self.invert_bezier(points_i)
-            p0 = QgsPoint(ps[0], ps[1])
-            p1 = QgsPoint(pe[0], pe[1])
-            c0 = QgsPoint(ps[0], ps[1])
-            c1 = QgsPoint(cs[0], cs[1])
-            c2 = QgsPoint(ce[0], ce[1])
-            c3 = QgsPoint(pe[0], pe[1])
+            p0 = QgsPointXY(ps[0], ps[1])
+            p1 = QgsPointXY(pe[0], pe[1])
+            c0 = QgsPointXY(ps[0], ps[1])
+            c1 = QgsPointXY(cs[0], cs[1])
+            c2 = QgsPointXY(ce[0], ce[1])
+            c3 = QgsPointXY(pe[0], pe[1])
             if i == 0:
                 self.insertNewPoint(len(self.ppoints), p0)
                 self.moveControlPoint(i * 2, c0)
@@ -605,7 +585,6 @@ class BezierEditingTool(QgsMapTool):
                 self.moveControlPoint((i + 1) * 2, c2)
                 self.moveControlPoint((i + 1) * 2 + 1, c3)
         return True
-
     def insertGeomToBezier(self, offset, geom, last=True):
         # self.check_crs()
         # if self.layerCRSSrsid != self.projectCRSSrsid:
@@ -617,20 +596,20 @@ class BezierEditingTool(QgsMapTool):
         for i, bezier in enumerate(beziers):
             if offset == 0:
                 if i == 0:
-                    p0 = QgsPoint(bezier[0][0], bezier[0][1])
+                    p0 = QgsPointXY(bezier[0][0], bezier[0][1])
                     self.insertNewPoint(0, p0)
                     self.history.append({"state": "add_anchor", "pointidx":0})
-                p1 = QgsPoint(bezier[3][0], bezier[3][1])
-                c1 = QgsPoint(bezier[1][0], bezier[1][1])
-                c2 = QgsPoint(bezier[2][0], bezier[2][1])
+                p1 = QgsPointXY(bezier[3][0], bezier[3][1])
+                c1 = QgsPointXY(bezier[1][0], bezier[1][1])
+                c2 = QgsPointXY(bezier[2][0], bezier[2][1])
                 self.moveControlPoint(i * 2 + 1, c1)
                 self.insertNewPoint(i + 1, p1)
                 self.moveControlPoint((i + 1) * 2, c2)
                 self.history.append({"state": "add_anchor", "pointidx": i+1})
             elif offset > 0:
-                p1 = QgsPoint(bezier[3][0], bezier[3][1])
-                c1 = QgsPoint(bezier[1][0], bezier[1][1])
-                c2 = QgsPoint(bezier[2][0], bezier[2][1])
+                p1 = QgsPointXY(bezier[3][0], bezier[3][1])
+                c1 = QgsPointXY(bezier[1][0], bezier[1][1])
+                c2 = QgsPointXY(bezier[2][0], bezier[2][1])
                 idx = (offset - 1) * 2 + i * 2 + 1
                 self.history.append({"state": "move_handle", "pointidx": idx, "point": self.cpoints[idx]})
                 self.moveControlPoint(idx, c1)
@@ -641,7 +620,7 @@ class BezierEditingTool(QgsMapTool):
         #self.log("pointsB:{}".format(len(self.points)))
     def convertLineToSimpleGeom(self,polyline):
         polyline = self.smoothing(polyline)
-        geom = QgsGeometry().fromPolyline(polyline)
+        geom = QgsGeometry.fromPolylineXY(polyline)
         d = self.canvas.mapUnitsPerPixel()
         geom = geom.simplify(self.tolerance * d)
         return geom
@@ -657,46 +636,37 @@ class BezierEditingTool(QgsMapTool):
         self.setRubberBandPoints(rbl_line, self.rbl)
     # ジオメトリのペンでの修正
     def modify_bezier(self, update_geom, org_geom):
-
         update_line = update_geom.asPolyline()
         org_line = org_geom.asPolyline()
-
 
         startpnt = update_line[0]
         lastpnt = update_line[-1]
         startpnt_is_near, start_anchoridx, start_vertexidx = self.closestPPointOfGeometry(startpnt, org_geom)
         lastpnt_is_near, last_anchoridx, last_vertexidx = self.closestPPointOfGeometry(lastpnt, org_geom)
-
         points = [org_line[i:i + self.bezier_num + 1] for i in range(0, len(org_line), self.bezier_num)][:-1]
         #self.log("{},{}".format(len(points),len(org_line)))
-
         # org_lineとupdate_lineの交差する周辺のベクトルの内積を計算。正なら順方向、不なら逆方向
         v1 = np.array(org_line[start_vertexidx])-np.array(org_line[start_vertexidx-1])
         v2 = np.array(update_line[1]) - np.array(update_line[0])
         direction = np.dot(v1,v2)
-
         self.history.append({"state": "start_pen"})
         # 逆方向ならorg_lineとベジエを定義しているのアンカー、ハンドル関連のリストを逆順にする
         if direction < 0:
             #self.log("reverse")
             org_line.reverse()
             self.flipBezierLine()
-
-            reversed_geom = QgsGeometry().fromPolyline(org_line)
+            reversed_geom = QgsGeometry.fromPolylineXY(org_line)
             startpnt_is_near, start_anchoridx, start_vertexidx = self.closestPPointOfGeometry(startpnt, reversed_geom)
             lastpnt_is_near, last_anchoridx, last_vertexidx = self.closestPPointOfGeometry(lastpnt, reversed_geom)
-
         # 編集箇所の前のコントロールポイントから今のところまでをくっつける
         # ベジエ区間ごとのポイントリスト　を作成
         points = [org_line[i:i + self.bezier_num + 1] for i in range(0, len(org_line), self.bezier_num)][:-1]
         #self.log("{}".format(len(points)))
         #self.log("{},{}".format(startpnt_is_near,lastpnt_is_near))
-
         #self.log("{},{},{},{},{},{}".format(start_anchoridx, last_anchoridx, start_vertexidx, last_vertexidx,
         #                                    start_vertexidx % self.bezier_num, last_vertexidx % self.bezier_num))
         # A 部分の修正
         if lastpnt_is_near and last_vertexidx > start_vertexidx: #startpnt_is_nearは修正開始の時点で確定している
-
             polyline = points[start_anchoridx - 1][0:start_vertexidx % self.bezier_num] + \
                        update_line + \
                        points[last_anchoridx - 1][last_vertexidx % self.bezier_num:]
@@ -720,7 +690,6 @@ class BezierEditingTool(QgsMapTool):
                 polyline = update_line
             else:  # ベジエ区間の中の何個目のポイントからか調べて、くっつける
                 polyline = points[start_anchoridx - 1][0:start_vertexidx % self.bezier_num] + update_line
-
             for i in range(start_anchoridx, len(self.ppoints)):
                 self.history.append(
                     {"state": "delete_anchor",
@@ -733,19 +702,17 @@ class BezierEditingTool(QgsMapTool):
                 self.deletePoint(start_anchoridx)
             geom = self.convertLineToSimpleGeom(polyline)
             self.insertGeomToBezier(start_anchoridx,geom,last=True)
-
         self.history.append({"state": "end_pen","direction":"forward"})
         # ベジエの方向を元に戻す
         if direction < 0:
             self.flipBezierLine()
             self.history[-1]["direction"] = "reverse"
-
     ########ジオメトリ、フィーチャー　ツール
     # ポイントに近いジオメトリ上のポイントを返す
     def closestPointOfGeometry(self,point,geom):
         #フィーチャとの距離が近いかどうかを確認
         near = False
-        (dist, minDistPoint, afterVertex)=geom.closestSegmentWithContext(point)
+        (dist, minDistPoint, afterVertex,leftOf)=geom.closestSegmentWithContext(point)
         d = self.canvas.mapUnitsPerPixel() * 10
         if math.sqrt(dist) < d:
             near = True
@@ -759,7 +726,7 @@ class BezierEditingTool(QgsMapTool):
     # ポインタの次のアンカーのidとvertexのidを返す。アンカーとスナップしている場合は、次のIDを返す。右端のアンカーの処理は注意
     def closestPPointOfGeometry(self,point,geom):
         near = False
-        (dist, minDistPoint, vertexidx) = geom.closestSegmentWithContext(point)
+        (dist, minDistPoint, vertexidx, leftOf) = geom.closestSegmentWithContext(point)
         anchoridx = vertexidx // self.bezier_num + 1
         d = self.canvas.mapUnitsPerPixel() * 10
         if math.sqrt(dist) < d:
@@ -770,15 +737,13 @@ class BezierEditingTool(QgsMapTool):
         continueFlag = False
         layer = self.canvas.currentLayer()
         provider = layer.dataProvider()
-
         self.check_crs()
         if self.layerCRSSrsid != self.projectCRSSrsid:
             geom.transform(QgsCoordinateTransform(self.projectCRSSrsid, self.layerCRSSrsid))
         f = QgsFeature()
         f.setGeometry(geom)
-
         # add attribute fields to feature
-        fields = layer.pendingFields()
+        fields = layer.fields()
         f.initAttributes(fields.count())
         if feat is None:
             for i in range(fields.count()):
@@ -787,9 +752,7 @@ class BezierEditingTool(QgsMapTool):
         else:
             for i in range(fields.count()):
                     f.setAttribute(i, feat.attributes()[i])
-
         layer.beginEditCommand("Feature added")
-
         settings = QSettings()
         disable_attributes = settings.value("/qgis/digitizing/disable_enter_attribute_values_dialog", False, type=bool)
         if disable_attributes or feat is not None:
@@ -798,6 +761,7 @@ class BezierEditingTool(QgsMapTool):
         else:
             dlg = self.iface.getFeatureForm(layer, f)
             if dlg.exec_():
+                layer.addFeature(f)
                 layer.endEditCommand()
             else:
                 layer.destroyEditCommand()
@@ -810,7 +774,6 @@ class BezierEditingTool(QgsMapTool):
     def editFeature(self,geom,feat,showdlg=True):
         continueFlag = False
         layer = self.canvas.currentLayer()
-
         self.check_crs()
         if self.layerCRSSrsid != self.projectCRSSrsid:
             geom.transform(QgsCoordinateTransform(self.projectCRSSrsid, self.layerCRSSrsid))
@@ -862,7 +825,6 @@ class BezierEditingTool(QgsMapTool):
         idx=["","","","",""]
         snaptype = [False,False,False,False,False]
         pnt = [None,None,None,None,None]
-
         self.snapmarker.hide()
         point = event.pos()
         # snapしていない場合
@@ -878,7 +840,6 @@ class BezierEditingTool(QgsMapTool):
                 #ここのpointはQgsPointになっているので、layerが必要
                 pnt[0] = self.toMapCoordinates(layer,snppoint)
                 snaptype[0]=True
-
         point = self.toMapCoordinates(point)
         # 「アンカーと近い」かどうか.
         for i, p in reversed(list(enumerate(self.ppoints))):
@@ -899,7 +860,6 @@ class BezierEditingTool(QgsMapTool):
                     idx[1] = i
                     pnt[1] = snppoint
                     break
-
         # 「コントロールポイントと近い」かどうか
         for i, p in reversed(list(enumerate(self.cpoints))):
             snapped,snppoint = self.getSelfSnapPoint(p,point)
@@ -915,8 +875,8 @@ class BezierEditingTool(QgsMapTool):
             p=[]
             for i in range(self.rbl.numberOfVertices()):
                 p.append(self.rbl.getPoint(0,i))
-            geom = QgsGeometry().fromPolyline(p)
-            (dist, minDistPoint, afterVertex) = geom.closestSegmentWithContext(point)
+            geom = QgsGeometry.fromPolylineXY(p)
+            (dist, minDistPoint, afterVertex, leftOf) = geom.closestSegmentWithContext(point)
             d = self.canvas.mapUnitsPerPixel() * 10
             if math.sqrt(dist) < d:
                 snaptype[3] = True
@@ -934,7 +894,6 @@ class BezierEditingTool(QgsMapTool):
                 self.snapmarker.setCenter(snppoint)
                 self.snapmarker.show()
         return orgpoint,snaptype,pnt,idx
-
     ########ツール（基礎的な関数）
     #移動平均でスムージング
     def smoothing(self,polyline):
@@ -945,7 +904,7 @@ class BezierEditingTool(QgsMapTool):
         y_pad = np.pad(poly[1], (num-1, 0), 'edge')
         x_smooth = np.convolve(x_pad, b, mode='valid')
         y_smooth = np.convolve(y_pad, b, mode='valid')
-        poly_smooth = [QgsPoint(x, y) for x,y in zip(x_smooth,y_smooth)]
+        poly_smooth = [QgsPointXY(x, y) for x,y in zip(x_smooth,y_smooth)]
         return poly_smooth
     #ポイント間の距離
     def distance(self,p1, p2):
@@ -959,13 +918,12 @@ class BezierEditingTool(QgsMapTool):
             t = 1.0 * t / self.bezier_num
             bx = (1 - t) ** 3 * p1.x() + 3 * t * (1 - t) ** 2 * c1.x() + 3 * t ** 2 * (1 - t) * c2.x() + t ** 3 * p2.x()
             by = (1 - t) ** 3 * p1.y() + 3 * t * (1 - t) ** 2 * c1.y() + 3 * t ** 2 * (1 - t) * c2.y() + t ** 3 * p2.y()
-            points.append(QgsPoint(bx, by))
+            points.append(QgsPointXY(bx, by))
         return points
     # 50点で補間されたベジエ曲線のリストから始点、終点のコントロールポイントを返す。
     def invert_bezier(self, points):
         # pointsから左右のコントロールポイントを求める
         # t1とt2の時の座標を代入して、連立方程式の解を解く
-
         ps = np.array(points[0])
         pe = np.array(points[-1])
         #tの分割数 今は固定値で50
@@ -975,14 +933,12 @@ class BezierEditingTool(QgsMapTool):
         p1 = np.array(points[1])
         t2 = 2.0 / tnum
         p2 = np.array(points[2])
-
         aa = 3 * t1 * (1 - t1) ** 2
         bb = 3 * t1 ** 2 * (1 - t1)
         cc = ps * (1 - t1) ** 3 + pe * t1 ** 3 - p1
         dd = 3 * t2 * (1 - t2) ** 2
         ee = 3 * t2 ** 2 * (1 - t2)
         ff = ps * (1 - t2) ** 3 + pe * t2 ** 3 - p2
-
         #self.log("{},{},{},{},{},{}".format(aa, bb, cc, dd, ee, ff))
         c0 = (bb * ff - cc * ee) / (aa * ee - bb * dd)
         c1 = (aa * ff - cc * dd) / (bb * dd - aa * ee)
@@ -990,11 +946,10 @@ class BezierEditingTool(QgsMapTool):
         # c2=(10,2)
         #self.log("{},{},{},{}".format(ps,pe,c0,c1))
         return ps, c0, pe, c1
-
     ######## マーカー、ラバーバンドの表示処理。（ベジエ操作から呼ばれる）
     # 新規のコントロールラインを作成
     def addNewRubberBand(self, rbcls, idx, point):
-        rbcl = QgsRubberBand(self.canvas, QGis.Line)
+        rbcl = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
         color = QColor(0, 0, 0)
         rbcl.setColor(color)
         rbcl.setWidth(1)
@@ -1017,7 +972,7 @@ class BezierEditingTool(QgsMapTool):
     # ベジエラインの表示
     def setRubberBandPoints(self, points, rb):
         # 最後に更新
-        rb.reset(QGis.Line)
+        rb.reset(QgsWkbTypes.LineGeometry)
         for point in points:
             update = point is points[-1]
             rb.addPoint(point, update)
@@ -1040,37 +995,30 @@ class BezierEditingTool(QgsMapTool):
         for m in markers:
             self.canvas.scene().removeItem(m)
 
-
     def showBezierMarker(self):
         self.show_anchor = True
         self.showAllMarker(self.pmarkers)
         self.showAllMarker(self.cmarkers)
         self.showAllRubberBand(self.rbcls)
         self.canvas.refresh()
-
     def hideBezierMarker(self):
         self.show_anchor = False
         #self.hideAllMarker(self.pmarkers)
         self.hideAllMarker(self.cmarkers)
         self.hideAllRubberBand(self.rbcls)
         self.canvas.refresh()
-
     def showAllMarker(self,markers):
         for m in markers:
             m.show()
-
     def hideAllMarker(self,markers):
         for m in markers:
             m.hide()
-
     def showAllRubberBand(self, rbcls):
         for rbcl in rbcls:
             rbcl.setColor(QColor(0, 0, 0, 255))
-
     def hideAllRubberBand(self, rbcls):
         for rbcl in rbcls:
             rbcl.setColor(QColor(0, 0, 0, 0))
-
     def check_snapsetting(self):
         proj = QgsProject.instance()
         snapmode = proj.readEntry('Digitizing', 'SnappingMode')[0]
@@ -1104,7 +1052,6 @@ class BezierEditingTool(QgsMapTool):
         self.projectCRSSrsid = renderer.destinationCrs().srsid()
         if renderer.destinationCrs().projectionAcronym() == "longlat":
             QMessageBox.warning(None, "Warning", u"プロジェクトの投影法を緯度経度から変更してください")
-
     def activate(self):
         self.canvas.setCursor(self.addanchor_cursor)
         self.alt = False
@@ -1112,7 +1059,6 @@ class BezierEditingTool(QgsMapTool):
         self.snapmarker.setColor(QColor(0, 0, 255))
         self.check_snapsetting()
         self.check_crs()
-
     def deactivate(self):
         pass
     def isZoomTool(self):
@@ -1124,4 +1070,4 @@ class BezierEditingTool(QgsMapTool):
     def showSettingsWarning(self):
         pass
     def log(self, msg):
-        QgsMessageLog.logMessage(msg, 'MyPlugin', QgsMessageLog.INFO)
+        QgsMessageLog.logMessage(msg, 'MyPlugin', Qgis.Info)

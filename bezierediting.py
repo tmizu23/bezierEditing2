@@ -2,22 +2,25 @@
 #-----------------------------------------------------------
 
 # Import the PyQt and the QGIS libraries
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
+from __future__ import absolute_import
+from builtins import object
+from qgis.PyQt.QtCore import *
+from qgis.PyQt.QtWidgets import *
+from qgis.PyQt.QtGui import *
 from qgis.core import *
 from qgis.gui import *
 
 #Import own classes and tools
-from beziereditingtool import BezierEditingTool
-from featureselectiontool import FeatureSelectionTool
-from splitpolygontool import SplitPolygonTool
-from splitlinetool import SplitLineTool
+from .beziereditingtool import BezierEditingTool
+from .featureselectiontool import FeatureSelectionTool
+from .splitpolygontool import SplitPolygonTool
+from .splitlinetool import SplitLineTool
 
 # initialize Qt resources from file resources.py
-import resources
+from . import resources
 
 
-class BezierEditing2:
+class BezierEditing2(object):
 
     def __init__(self, iface):
       # Save reference to the QGIS interface
@@ -42,7 +45,7 @@ class BezierEditing2:
         self.bezier_edit.setObjectName("BezierEditing_bezier_edit")
         self.bezier_edit.setEnabled(False)
         self.bezier_edit.setCheckable(True)
-        self.bezier_edit.activated.connect(self.bezierediting)
+        self.bezier_edit.triggered.connect(self.bezierediting)
         self.toolbar.addAction(self.bezier_edit)
 
         # Create pen action
@@ -50,7 +53,7 @@ class BezierEditing2:
         self.pen_edit.setObjectName("BezierEditing_pen_edit")
         self.pen_edit.setEnabled(False)
         self.pen_edit.setCheckable(True)
-        self.pen_edit.activated.connect(self.penediting)
+        self.pen_edit.triggered.connect(self.penediting)
         self.toolbar.addAction(self.pen_edit)
 
         # Create show anchor option
@@ -65,7 +68,7 @@ class BezierEditing2:
         self.undo = QAction(QIcon(":/plugins/bezierEditing2/icon/undoicon.svg"),"Bezier_Undo", self.iface.mainWindow())
         self.undo.setObjectName("BezierEditing_undo")
         self.undo.setEnabled(False)
-        self.undo.activated.connect(self.beziertool.undo)
+        self.undo.triggered.connect(self.beziertool.undo)
         self.toolbar.addAction(self.undo)
 
         # Create selection action
@@ -73,7 +76,7 @@ class BezierEditing2:
         self.feature_selection.setObjectName("BezierEditing_feature_selection")
         self.feature_selection.setEnabled(False)
         self.feature_selection.setCheckable(True)
-        self.feature_selection.activated.connect(self.featureselection)
+        self.feature_selection.triggered.connect(self.featureselection)
         self.toolbar.addAction(self.feature_selection)
 
         # Create polygon split action
@@ -81,7 +84,7 @@ class BezierEditing2:
         self.polygon_split.setObjectName("BezierEditing_polygon_split")
         self.polygon_split.setEnabled(False)
         self.polygon_split.setCheckable(True)
-        self.polygon_split.activated.connect(self.polygonsplit)
+        self.polygon_split.triggered.connect(self.polygonsplit)
         self.toolbar.addAction(self.polygon_split)
 
         # Create line split action
@@ -89,13 +92,13 @@ class BezierEditing2:
         self.line_split.setObjectName("BezierEditing_line_split")
         self.line_split.setEnabled(False)
         self.line_split.setCheckable(True)
-        self.line_split.activated.connect(self.linesplit)
+        self.line_split.triggered.connect(self.linesplit)
         self.toolbar.addAction(self.line_split)
 
 
         # Connect to signals for button behaviour
-        self.iface.currentLayerChanged['QgsMapLayer*'].connect(self.toggle)
-        self.canvas.mapToolSet['QgsMapTool*'].connect(self.deactivate)
+        self.iface.layerTreeView().currentLayerChanged.connect(self.toggle)
+        self.canvas.mapToolSet.connect(self.deactivate)
 
 
     def bezierediting(self):
@@ -134,8 +137,8 @@ class BezierEditing2:
             return
 
         #Decide whether the plugin button/menu is enabled or disabled
-        if (layer.isEditable() and (layer.geometryType() == QGis.Line or
-                                    layer.geometryType() == QGis.Polygon)):
+        if (layer.isEditable() and (layer.geometryType() == QgsWkbTypes.LineGeometry or
+                                    layer.geometryType() == QgsWkbTypes.PolygonGeometry)):
             ### add for tool
             self.bezier_edit.setEnabled(True)
             self.pen_edit.setEnabled(True)
@@ -165,8 +168,8 @@ class BezierEditing2:
             self.undo.setEnabled(False)
 
             if (layer.type() == QgsMapLayer.VectorLayer and
-                    (layer.geometryType() == QGis.Line or
-                     layer.geometryType() == QGis.Polygon)):
+                    (layer.geometryType() == QgsWkbTypes.LineGeometry or
+                     layer.geometryType() == QgsWkbTypes.PolygonGeometry)):
                 try:  # remove any existing connection first
                     layer.editingStarted.disconnect(self.toggle)
                 except TypeError:  # missing connection
@@ -197,4 +200,4 @@ class BezierEditing2:
         del self.toolbar
 
     def log(self, msg):
-        QgsMessageLog.logMessage(msg, 'MyPlugin', QgsMessageLog.INFO)
+        QgsMessageLog.logMessage(msg, 'MyPlugin', Qgis.Info)

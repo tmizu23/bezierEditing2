@@ -4,8 +4,11 @@
     "Graphics Gems", Academic Press, 1990
 """
 from __future__ import print_function
+from __future__ import absolute_import
+from builtins import zip
+from builtins import range
 from numpy import *
-import bezier
+from . import bezier
 
 
 # Fit one (ore more) Bezier curves to a set of points

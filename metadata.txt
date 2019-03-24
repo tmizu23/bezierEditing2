@@ -1,7 +1,7 @@
 ; the next section is mandatory
 [general]
 name=Bezier Editing2
-qgisMinimumVersion=2.18
+qgisMinimumVersion=3.0
 description=BezierCurve line/polygon editing
 category=Vector
 version=version 2.0.0
