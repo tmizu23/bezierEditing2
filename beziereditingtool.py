@@ -10,7 +10,7 @@ from qgis.gui import *
 from .fitCurves import *
 import math
 import numpy as np
-from .fitCurves import *
+
 class BezierEditingTool(QgsMapTool):
     def __init__(self, canvas,iface):
         QgsMapTool.__init__(self, canvas)
@@ -31,7 +31,6 @@ class BezierEditingTool(QgsMapTool):
         self.editing = False #オブジェクト作成、修正中
         self.modify = False #オブジェクトの修正かどうか（すでに属性が入っている）
         self.snapping = True
-        self.snapavoidbool = True
         self.featid = None # 編集オブジェクトのid
         self.selected_point_idx = None
         self.rbl = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)  # 補間ライン
@@ -831,10 +830,10 @@ class BezierEditingTool(QgsMapTool):
         orgpoint = self.toMapCoordinates(point)
         pnt[0] = orgpoint
         if self.snapping:
-            snapper = QgsMapCanvasSnapper(self.canvas)
-            (retval, snapped) = snapper.snapToBackgroundLayers(point)
-            if snapped !=[]:
-                snppoint = snapped[0].snappedVertex
+            snapper = self.canvas.snappingUtils()
+            snapMatch = snapper.snapToMap(point)
+            if snapMatch.hasVertex():
+                snppoint = snapMatch.point()
                 self.snapmarker.setCenter(snppoint)
                 self.snapmarker.show()
                 #ここのpointはQgsPointになっているので、layerが必要
@@ -1020,31 +1019,13 @@ class BezierEditingTool(QgsMapTool):
         for rbcl in rbcls:
             rbcl.setColor(QColor(0, 0, 0, 0))
     def check_snapsetting(self):
-        proj = QgsProject.instance()
-        snapmode = proj.readEntry('Digitizing', 'SnappingMode')[0]
-        # QgsMessageLog.logMessage("snapmode:{}".format(snapmode), 'MyPlugin', QgsMessageLog.INFO)
-        if snapmode == "advanced":
-            snaplayer = proj.readListEntry('Digitizing', 'LayerSnappingList')[0]
-            snapenabled = proj.readListEntry('Digitizing', 'LayerSnappingEnabledList')[0]
-            snapavoid = proj.readListEntry('Digitizing', 'AvoidIntersectionsList')[0]
-            layerid = self.canvas.currentLayer().id()
-            if layerid in snaplayer:  # 新規のレイヤーだとない場合がある？
-                snaptype = snapenabled[snaplayer.index(layerid)]
-                # QgsMessageLog.logMessage("snaptype:{}".format(snaptype), 'MyPlugin', QgsMessageLog.INFO)
-                self.snapavoidbool = self.canvas.currentLayer().id() in snapavoid
-                if snaptype == "disabled":
-                    self.snapping = False
-                else:
-                    self.snapping = True
-            else:
-                self.snapping = True
+        snap_cfg = self.iface.mapCanvas().snappingUtils().config()
+        if snap_cfg.enabled():
+            self.snapping = True
         else:
-            snaptype = proj.readEntry('Digitizing', 'DefaultSnapType')[0]
-            if snaptype == "off":
-                self.snapping = False
-            else:
-                self.snapping = True
-            self.snapavoidbool = False
+            self.snapping = False
+        #QgsMessageLog.logMessage("snapping:{}".format(self.snapping), 'MyPlugin')
+
     def check_crs(self):
         layer = self.canvas.currentLayer()
         renderer = self.canvas.mapSettings()
