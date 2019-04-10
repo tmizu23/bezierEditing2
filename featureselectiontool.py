@@ -102,9 +102,9 @@ class FeatureSelectionTool(QgsMapTool):
             d = self.canvas.mapUnitsPerPixel() * 4
             rect = QgsRectangle((point.x() - d), (point.y() - d), (point.x() + d), (point.y() + d))
         self.check_crs()
-        if self.layerCRSSrsid != self.projectCRSSrsid:
+        if self.layerCRS.srsid() != self.projectCRS.srsid():
             rectGeom = QgsGeometry.fromRect(rect)
-            rectGeom.transform(QgsCoordinateTransform(self.projectCRSSrsid, self.layerCRSSrsid))
+            rectGeom.transform(QgsCoordinateTransform(self.projectCRS, self.layerCRS, QgsProject.instance()))
             rect = rectGeom.boundingBox()
         request = QgsFeatureRequest()
         #request.setLimit(1)
@@ -140,8 +140,8 @@ class FeatureSelectionTool(QgsMapTool):
     def check_crs(self):
         layer = self.canvas.currentLayer()
         renderer = self.canvas.mapSettings()
-        self.layerCRSSrsid = layer.crs().srsid()
-        self.projectCRSSrsid = renderer.destinationCrs().srsid()
+        self.layerCRS = layer.crs()
+        self.projectCRS = renderer.destinationCrs()
     def showSettingsWarning(self):
         pass
     def activate(self):

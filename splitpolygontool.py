@@ -138,8 +138,8 @@ class SplitPolygonTool(QgsMapTool):
         f = QgsFeature(fields)
 
         self.check_crs()
-        if self.layerCRSSrsid != self.projectCRSSrsid:
-            geom.transform(QgsCoordinateTransform(self.projectCRSSrsid, self.layerCRSSrsid))
+        if self.layerCRS.srsid() != self.projectCRS.srsid():
+            geom.transform(QgsCoordinateTransform(self.projectCRS, self.layerCRS, QgsProject.instance()))
         f.setGeometry(geom)
 
         ## Add attributefields to feature.
@@ -205,8 +205,8 @@ class SplitPolygonTool(QgsMapTool):
     def check_crs(self):
         layer = self.canvas.currentLayer()
         renderer = self.canvas.mapSettings()
-        self.layerCRSSrsid = layer.crs().srsid()
-        self.projectCRSSrsid = renderer.destinationCrs().srsid()
+        self.layerCRS = layer.crs()
+        self.projectCRS = renderer.destinationCrs()
     def showSettingsWarning(self):
         pass
     def activate(self):
