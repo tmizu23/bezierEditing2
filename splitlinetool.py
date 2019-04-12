@@ -45,90 +45,85 @@ class SplitLineTool(QgsMapTool):
         if button_type == 1:
             selected, f = self.getSelectedNearFeature(layer, pnt)
             if selected:
+                if layer.geometryType() != QgsWkbTypes.LineGeometry:
+                    QMessageBox.warning(None, "Warning", u"ラインレイヤを選択してください")
+                    return
                 geom = QgsGeometry(f.geometry())
                 self.check_crs()
-                if self.layerCRSSrsid != self.projectCRSSrsid:
-                    geom.transform(QgsCoordinateTransform(self.layerCRSSrsid, self.projectCRSSrsid))
+                if self.layerCRS.srsid() != self.projectCRS.srsid():
+                    geom.transform(QgsCoordinateTransform(self.layerCRS, self.projectCRS,self.layerCRS, QgsProject.instance()))
+                if geom.wkbType() == QgsWkbTypes.MultiLineString:
+                    polyline = geom.asMultiPolyline()[0]
+                elif geom.wkbType() == QgsWkbTypes.LineString:
+                    polyline = geom.asPolyline()
+                else:
+                    QMessageBox.warning(None, "Warning", u"レイヤのタイプを確認してください")
                 near, minDistPoint, afterVertex = self.closestPointOfGeometry(pnt, geom)
-                polyline = geom.asPolyline()
                 line1 = polyline[0:afterVertex]
                 line1.append(minDistPoint)
                 line2 = polyline[afterVertex:]
                 line2.insert(0, minDistPoint)
                 self.createFeature(QgsGeometry.fromPolylineXY(line2), f)
-                self.editFeature(QgsGeometry.fromPolylineXY(line1), f, True)
+                self.editFeature(QgsGeometry.fromPolylineXY(line1), f, False)
                 self.canvas.currentLayer().removeSelection()
 
-    def createFeature(self, geom, feat):
+    def createFeature(self,geom,feat=None):
         continueFlag = False
         layer = self.canvas.currentLayer()
-        provider = layer.dataProvider()
-
         self.check_crs()
-        if self.layerCRSSrsid != self.projectCRSSrsid:
-            geom.transform(QgsCoordinateTransform(self.projectCRSSrsid, self.layerCRSSrsid))
-
-        # validate geometry
-        f = QgsFeature()
-        f.setGeometry(geom)
-
-        # add attribute fields to feature
+        if self.layerCRS.srsid() != self.projectCRS.srsid():
+            geom.transform(QgsCoordinateTransform(self.projectCRS, self.layerCRS, QgsProject.instance()))
+        layer.beginEditCommand("Feature added")
+        f = QgsVectorLayerUtils.createFeature(layer)
         fields = layer.fields()
-        f.initAttributes(fields.count())
-
-        if feat is None:
-            for i in range(fields.count()):
-                if provider.defaultValue(i):
-                    f.setAttribute(i, provider.defaultValue(i))
-        else:
+        f.setFields(fields)
+        f.setGeometry(geom)
+        if feat is not None:
             for i in range(fields.count()):
                     f.setAttribute(i, feat.attributes()[i])
-
-        layer.beginEditCommand("Feature added")
 
         settings = QSettings()
         disable_attributes = settings.value("/qgis/digitizing/disable_enter_attribute_values_dialog", False, type=bool)
         if disable_attributes or feat is not None:
-            if layer.geometryType() == QgsWkbTypes.LineGeometry:
-                layer.addFeature(f)
+            layer.addFeatures([f])
+            layer.endEditCommand()
+        else:
+            dlg = QgsAttributeDialog(layer, f, True, self.iface.mainWindow(),True)
+            dlg.setMode(QgsAttributeEditorContext.AddFeatureMode)
+            if dlg.exec_():
                 layer.endEditCommand()
             else:
-                QMessageBox.warning(None, "Warning", "Select Line layer!")
-        else:
-            dlg = self.iface.getFeatureForm(layer, f)
-            if dlg.exec_():
-                if layer.geometryType() == QgsWkbTypes.LineGeometry:
-                    layer.addFeature(f)
-                    layer.endEditCommand()
-                else:
-                    QMessageBox.warning(None, "Warning", "Select Line layer!")
-                    layer.destroyEditCommand()
-                    continueFlag = True
-            else:
                 layer.destroyEditCommand()
-                reply = QMessageBox.question(None, "Question", "continue?", QMessageBox.Yes,
+                reply = QMessageBox.question(None, "Question", u"編集を続けますか？", QMessageBox.Yes,
                                              QMessageBox.No)
                 if reply == QMessageBox.Yes:
                     continueFlag = True
-            return continueFlag
-    def editFeature(self, geom, f, hidedlg):
+        return continueFlag
+
+    def editFeature(self,geom,feat,showdlg=True):
+        continueFlag = False
         layer = self.canvas.currentLayer()
         self.check_crs()
-        if self.layerCRSSrsid != self.projectCRSSrsid:
-            geom.transform(QgsCoordinateTransform(self.projectCRSSrsid, self.layerCRSSrsid))
+        if self.layerCRS.srsid() != self.projectCRS.srsid():
+            geom.transform(QgsCoordinateTransform(self.projectCRS, self.layerCRS, QgsProject.instance()))
         layer.beginEditCommand("Feature edited")
         settings = QSettings()
         disable_attributes = settings.value("/qgis/digitizing/disable_enter_attribute_values_dialog", False, type=bool)
-        if disable_attributes or hidedlg:
-            layer.changeGeometry(f.id(), geom)
+        if disable_attributes or showdlg is False:
+            layer.changeGeometry(feat.id(), geom)
             layer.endEditCommand()
         else:
-            dlg = self.iface.getFeatureForm(layer, f)
+            dlg = self.iface.getFeatureForm(layer, feat)
             if dlg.exec_():
-                layer.changeGeometry(f.id(), geom)
+                layer.changeGeometry(feat.id(), geom)
                 layer.endEditCommand()
             else:
                 layer.destroyEditCommand()
+                reply = QMessageBox.question(None, "Question", u"編集を続けますか？", QMessageBox.Yes,
+                                             QMessageBox.No)
+                if reply == QMessageBox.Yes:
+                    continueFlag = True
+        return continueFlag
 
     def closestPointOfGeometry(self,point,geom):
         #フィーチャとの距離が近いかどうかを確認
@@ -138,13 +133,14 @@ class SplitLineTool(QgsMapTool):
         if math.sqrt(dist) < d:
             near = True
         return near,minDistPoint,afterVertex
+
     def getNearFeature(self, layer,point):
         d = self.canvas.mapUnitsPerPixel() * 4
         rect = QgsRectangle((point.x() - d), (point.y() - d), (point.x() + d), (point.y() + d))
         self.check_crs()
-        if self.layerCRSSrsid != self.projectCRSSrsid:
+        if self.layerCRS.srsid() != self.projectCRS.srsid():
             rectGeom = QgsGeometry.fromRect(rect)
-            rectGeom.transform(QgsCoordinateTransform(self.projectCRSSrsid, self.layerCRSSrsid))
+            rectGeom.transform(QgsCoordinateTransform(self.projectCRS, self.layerCRS, QgsProject.instance()))
             rect = rectGeom.boundingBox()
         request = QgsFeatureRequest()
         request.setLimit(1)
@@ -183,8 +179,8 @@ class SplitLineTool(QgsMapTool):
     def check_crs(self):
         layer = self.canvas.currentLayer()
         renderer = self.canvas.mapSettings()
-        self.layerCRSSrsid = layer.crs().srsid()
-        self.projectCRSSrsid = renderer.destinationCrs().srsid()
+        self.layerCRS = layer.crs()
+        self.projectCRS = renderer.destinationCrs()
 
     def showSettingsWarning(self):
         pass

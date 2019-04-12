@@ -40,12 +40,12 @@ class BezierEditingTool(QgsMapTool):
         self.edit_rbl = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
         self.edit_rbl.setColor(QColor(255, 255, 0, 150))
         self.edit_rbl.setWidth(2)
-        self.test_rbl = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
-        self.test_rbl.setColor(QColor(0, 255, 0))
-        self.test_rbl.setWidth(2)
-        self.test2_rbl = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
-        self.test2_rbl.setColor(QColor(0, 0, 255))
-        self.test2_rbl.setWidth(2)
+        # self.test_rbl = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
+        # self.test_rbl.setColor(QColor(0, 255, 0))
+        # self.test_rbl.setWidth(2)
+        # self.test2_rbl = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
+        # self.test2_rbl.setColor(QColor(0, 0, 255))
+        # self.test2_rbl.setWidth(2)
         self.snapmarker = QgsVertexMarker(self.canvas)
         self.snapmarker.setIconType(QgsVertexMarker.ICON_BOX)
         self.snapmarker.setColor(QColor(0, 0, 255))
@@ -298,7 +298,11 @@ class BezierEditingTool(QgsMapTool):
             if type == QgsWkbTypes.PolygonGeometry:
                 geom = QgsGeometry.fromPolygonXY([self.points])
             else:
-                geom = QgsGeometry.fromPolylineXY(self.points)
+                if layer.wkbType()== QgsWkbTypes.LineString:
+                    geom = QgsGeometry.fromPolylineXY(self.points)
+                elif layer.wkbType()== QgsWkbTypes.MultiLineString:
+                    geom = QgsGeometry.fromMultiPolylineXY([self.points])
+
 
             if self.modify:
                 feature = self.getFeatureById(layer, self.featid)
@@ -319,6 +323,7 @@ class BezierEditingTool(QgsMapTool):
             self.editing = False
             self.modify = False
         self.canvas.refresh()
+
     def updateControlPoint(self, point):
         # コントロールポイントを更新（ベジエも更新するために強制的に呼び出す）
         #self.log("update")
@@ -330,6 +335,10 @@ class BezierEditingTool(QgsMapTool):
     # ペン関係
     def draw_newline(self,snaptype):
         # スムーズ処理してrbを付け替える
+        if self.rbl.numberOfVertices() <= 2: #クリックいた場合は無視
+            self.rbl.reset(QgsWkbTypes.LineGeometry)
+            self.editing = False
+            return
         rbgeom = self.rbl.asGeometry()
         rbline = rbgeom.asPolyline()
         geom = self.convertLineToSimpleGeom(rbline)
@@ -344,6 +353,9 @@ class BezierEditingTool(QgsMapTool):
         else:
             self.hideBezierMarker()
     def draw_updateline(self,snaptype):
+        if self.edit_rbl.numberOfVertices() <= 2:
+            self.edit_rbl.reset(QgsWkbTypes.LineGeometry)
+            return
         org_geom = self.rbl.asGeometry()
         update_geom = self.edit_rbl.asGeometry()
         self.modify_bezier(update_geom, org_geom)  # 編集箇所の次のコントロールポイント以降を削除
@@ -561,7 +573,12 @@ class BezierEditingTool(QgsMapTool):
         self.check_crs()
         if self.layerCRS.srsid() != self.projectCRS.srsid():
             geom.transform(QgsCoordinateTransform(self.layerCRS, self.projectCRS, QgsProject.instance()))
-        polyline = geom.asPolyline()
+        if geom.wkbType() == QgsWkbTypes.MultiLineString:
+            polyline = geom.asMultiPolyline()[0]
+        elif geom.wkbType() == QgsWkbTypes.LineString:
+            polyline = geom.asPolyline()
+        else:
+            QMessageBox.warning(None, "Warning", u"レイヤのタイプを確認してください")
         if len(polyline) % 10 != 1:
             # 他のツールで編集されているのでベジエに変換できない。
             # 編集されていても偶然、あまりが1になる場合は、変換してしまう。
@@ -757,32 +774,27 @@ class BezierEditingTool(QgsMapTool):
     def createFeature(self,geom,feat=None):
         continueFlag = False
         layer = self.canvas.currentLayer()
-        provider = layer.dataProvider()
         self.check_crs()
         if self.layerCRS.srsid() != self.projectCRS.srsid():
             geom.transform(QgsCoordinateTransform(self.projectCRS, self.layerCRS, QgsProject.instance()))
-        f = QgsFeature()
-        f.setGeometry(geom)
-        # add attribute fields to feature
+        layer.beginEditCommand("Feature added")
+        f = QgsVectorLayerUtils.createFeature(layer)
         fields = layer.fields()
-        f.initAttributes(fields.count())
-        if feat is None:
-            for i in range(fields.count()):
-                if provider.defaultValue(i):
-                    f.setAttribute(i, provider.defaultValue(i))
-        else:
+        f.setFields(fields)
+        f.setGeometry(geom)
+        if feat is not None:
             for i in range(fields.count()):
                     f.setAttribute(i, feat.attributes()[i])
-        layer.beginEditCommand("Feature added")
+
         settings = QSettings()
         disable_attributes = settings.value("/qgis/digitizing/disable_enter_attribute_values_dialog", False, type=bool)
         if disable_attributes or feat is not None:
-            layer.addFeature(f)
+            layer.addFeatures([f])
             layer.endEditCommand()
         else:
-            dlg = self.iface.getFeatureForm(layer, f)
+            dlg = QgsAttributeDialog(layer, f, True, self.iface.mainWindow(),True)
+            dlg.setMode(QgsAttributeEditorContext.AddFeatureMode)
             if dlg.exec_():
-                layer.addFeature(f)
                 layer.endEditCommand()
             else:
                 layer.destroyEditCommand()
@@ -892,7 +904,7 @@ class BezierEditingTool(QgsMapTool):
                 self.snapmarker.show()
                 break
         # 「線上かどうか for pen」
-        if self.rbl.size() > 0:
+        if self.rbl.numberOfVertices() > 0:
             p=[]
             for i in range(self.rbl.numberOfVertices()):
                 p.append(self.rbl.getPoint(0,i))

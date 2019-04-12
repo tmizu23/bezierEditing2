@@ -15,15 +15,6 @@ class SplitPolygonTool(QgsMapTool):
         QgsMapTool.__init__(self, canvas)
         self.canvas = canvas
         self.iface = iface
-        self.alt = False # no use now
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Alt:
-            self.alt = True
-
-    def keyReleaseEvent(self, event):
-        if event.key() == Qt.Key_Alt:
-            self.alt = False
 
     def runSplit(self):
 
@@ -31,6 +22,7 @@ class SplitPolygonTool(QgsMapTool):
 
         polygon_layer_num, polygon_layer, polygons = self.selectedPolygonFeatures()
         line_layer_num, line_layer, lines = self.selectedLineFeatures()
+        #self.log("{}".format(polygon_layer_num))
         if polygon_layer_num != 1:
             QMessageBox.warning(None, "Warning", u"2つ以上のレイヤに選択されたポリゴンがあります。")
             return
@@ -58,7 +50,7 @@ class SplitPolygonTool(QgsMapTool):
         polygon_layer.beginEditCommand("Features split")
         for i, polygon in enumerate(polygons):
             polygon_geom = QgsGeometry(polygon.geometry())
-            # QGIS 3 reports as multiline or multipolygon for single in QGIS 2. it's bug?
+            # QGIS 3 reports as multiline or multipolygon for single in QGIS 2.
             polygon_geom.convertToSingleType()
             line_geom.convertToSingleType()
             result, newGeometries, topoTestPoints = polygon_geom.splitGeometry(line_geom.asPolyline(), False)
@@ -131,42 +123,6 @@ class SplitPolygonTool(QgsMapTool):
 
         return newFeatures
 
-    def createFeature(self,layer,geom):
-        continueFlag = False
-        provider = layer.dataProvider()
-        fields = layer.fields()
-        f = QgsFeature(fields)
-
-        self.check_crs()
-        if self.layerCRS.srsid() != self.projectCRS.srsid():
-            geom.transform(QgsCoordinateTransform(self.projectCRS, self.layerCRS, QgsProject.instance()))
-        f.setGeometry(geom)
-
-        ## Add attributefields to feature.
-        for field in fields.toList():
-            ix = fields.indexFromName(field.name())
-            f[field.name()] = provider.defaultValue(ix)
-
-        layer.beginEditCommand("Feature added")
-
-        settings = QSettings()
-        disable_attributes = settings.value("/qgis/digitizing/disable_enter_attribute_values_dialog", False, type=bool)
-        if disable_attributes:
-            layer.addFeature(f)
-            layer.endEditCommand()
-        else:
-            dlg = self.iface.getFeatureForm(layer, f)
-            if dlg.exec_():
-                layer.addFeature(f)
-                layer.endEditCommand()
-            else:
-                layer.destroyEditCommand()
-                reply = QMessageBox.question(None, "Question", u"編集を続けますか？", QMessageBox.Yes,
-                                             QMessageBox.No)
-                if reply == QMessageBox.Yes:
-                    continueFlag = True
-        return continueFlag
-
     def selectedPolygonFeatures(self):
         layer_list = QgsProject.instance().layerTreeRoot().children()
         layers = [lyr.layer() for lyr in layer_list]
@@ -174,11 +130,12 @@ class SplitPolygonTool(QgsMapTool):
         layer = None
         features = []
         for l in layers:
-            if l.type() == QgsMapLayer.VectorLayer and l.geometryType() == QgsWkbTypes.PolygonGeometry:
-                fids = l.selectedFeatureIds()
-                features = [self.getFeatureById(l,fid) for fid in fids]
-                layer = l
-                layer_num = layer_num + 1
+            if QgsProject.instance().layerTreeRoot().findLayer(l.id()).isVisible():
+                if l.type() == QgsMapLayer.VectorLayer and l.geometryType() == QgsWkbTypes.PolygonGeometry:
+                    fids = l.selectedFeatureIds()
+                    features = [self.getFeatureById(l,fid) for fid in fids]
+                    layer = l
+                    layer_num = layer_num + 1
         return layer_num, layer, features
 
     def selectedLineFeatures(self):
@@ -188,11 +145,12 @@ class SplitPolygonTool(QgsMapTool):
         layer = None
         features = []
         for l in layers:
-            if l.type() == QgsMapLayer.VectorLayer and l.geometryType() == QgsWkbTypes.LineGeometry:
-                fids = l.selectedFeatureIds()
-                features = [self.getFeatureById(l,fid) for fid in fids]
-                layer = l
-                layer_num = layer_num + 1
+            if QgsProject.instance().layerTreeRoot().findLayer(l.id()).isVisible():
+                if l.type() == QgsMapLayer.VectorLayer and l.geometryType() == QgsWkbTypes.LineGeometry:
+                    fids = l.selectedFeatureIds()
+                    features = [self.getFeatureById(l,fid) for fid in fids]
+                    layer = l
+                    layer_num = layer_num + 1
         return layer_num, layer, features
 
     def getFeatureById(self,layer,featid):
@@ -213,7 +171,6 @@ class SplitPolygonTool(QgsMapTool):
         self.cursor = QCursor()
         self.cursor.setShape(Qt.ArrowCursor)
         self.canvas.setCursor(self.cursor)
-        self.alt = False
         self.runSplit()
 
     def deactivate(self):

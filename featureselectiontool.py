@@ -66,7 +66,7 @@ class FeatureSelectionTool(QgsMapTool):
         #layers = QgsMapLayerRegistry.instance().mapLayers().values()
         layers = QgsProject.instance().layerTreeRoot().findLayers()
         for layer in layers:
-            self.log("{}".format(layer.name().encode('utf-8')))
+            #self.log("{}".format(layer.name().encode('utf-8')))
             if layer.layer().type() != QgsMapLayer.VectorLayer:
                 continue
             near = self.selectNearFeature(layer.layer(), point, rect)
