@@ -1077,12 +1077,11 @@ class BezierEditingTool(QgsMapTool):
         #QgsMessageLog.logMessage("snapping:{}".format(self.snapping), 'MyPlugin')
 
     def check_crs(self):
-        layer = self.canvas.currentLayer()
-        renderer = self.canvas.mapSettings()
-        self.layerCRS = layer.crs()
-        self.projectCRS = renderer.destinationCrs()
-        if renderer.destinationCrs().projectionAcronym() == "longlat":
+        self.layerCRS = self.canvas.currentLayer().crs()
+        self.projectCRS = self.canvas.mapSettings().destinationCrs()
+        if self.projectCRS.projectionAcronym() == "longlat":
             QMessageBox.warning(None, "Warning", u"プロジェクトの投影法を緯度経度から変更してください")
+
     def activate(self):
         self.canvas.setCursor(self.addanchor_cursor)
         self.alt = False
