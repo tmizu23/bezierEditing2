@@ -137,8 +137,7 @@ class BezierEditing2(object):
             return
 
         #Decide whether the plugin button/menu is enabled or disabled
-        if (layer.isEditable() and (layer.geometryType() == QgsWkbTypes.LineGeometry or
-                                    layer.geometryType() == QgsWkbTypes.PolygonGeometry)):
+        if layer.isEditable() and layer.type() == QgsMapLayer.VectorLayer:
             ### add for tool
             self.bezier_edit.setEnabled(True)
             self.pen_edit.setEnabled(True)
@@ -167,9 +166,7 @@ class BezierEditing2(object):
             self.anchor_on.setEnabled(False)
             self.undo.setEnabled(False)
 
-            if (layer.type() == QgsMapLayer.VectorLayer and
-                    (layer.geometryType() == QgsWkbTypes.LineGeometry or
-                     layer.geometryType() == QgsWkbTypes.PolygonGeometry)):
+            if layer.type() == QgsMapLayer.VectorLayer:
                 try:  # remove any existing connection first
                     layer.editingStarted.disconnect(self.toggle)
                 except TypeError:  # missing connection

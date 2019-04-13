@@ -89,17 +89,18 @@ class BezierEditingTool(QgsMapTool):
         #self.log("{}".format(snaptype))
         if self.mode == "bezier":
             self.moveFlag = False
+            # ベジエツールで右クリック
             if event.button() == Qt.RightButton:
-                # 右クリックで確定
+                # 編集を確定する
                 if self.editing:
                     self.finish_drawing(layer)
+                    self.canvas.refresh()
+                # ベジエに変換する
                 else:
-                    if layer.geometryType() == QgsWkbTypes.PolygonGeometry:
-                        QMessageBox.warning(None, "Warning", u"ポリゴンはベジエに変換できません")
-                        return
                     self.start_modify(layer,orgpoint)
+            # ベジエで左クリック
             elif event.button() == Qt.LeftButton:
-                # 左クリック
+                # Ctrlを押しながら
                 if self.ctrl:
                     # アンカーと重なっていてもアンカーを追加したいとき。ポリゴンを閉じたいときなど。
                     if snaptype[1]:
@@ -112,6 +113,7 @@ class BezierEditingTool(QgsMapTool):
                             # if len(self.history) > 5:
                             #     del self.history[0]
                             self.updateControlPoint(point[1])  # ベジエを補完するため動いてなくても最初に呼び出す
+                # Altを押しながら
                 elif self.alt:
                     # アンカーからコントロールポイントを引き出すとき
                     if snaptype[2] and snaptype[1]:
@@ -127,6 +129,7 @@ class BezierEditingTool(QgsMapTool):
                             # if len(self.history) > 5:
                             #     del self.history[0]
                             self.updateControlPoint(point[3])
+                # Shiftを押しながら
                 elif self.shift:
                     # アンカーを削除するとき
                     if snaptype[1]:
@@ -188,8 +191,8 @@ class BezierEditingTool(QgsMapTool):
                 if self.editing:
                     self.finish_drawing(layer)
                 else:
-                    if layer.geometryType() == QgsWkbTypes.PolygonGeometry:
-                        QMessageBox.warning(None, "Warning", u"ポリゴンはベジエに変換できません")
+                    if layer.geometryType() != QgsWkbTypes.LineGeometry:
+                        QMessageBox.warning(None, "Warning", u"ライン以外はベジエに変換できません")
                         return
                     self.start_modify(layer,orgpoint)
             # 左クリック
@@ -289,40 +292,43 @@ class BezierEditingTool(QgsMapTool):
                 # self.log("edit start")
                 self.editing = True
                 self.modify = True
-            else:
-                QMessageBox.warning(None, "Warning", u"他のツールで編集されたオブジェクトはベジエに変換できません")
+
     def finish_drawing(self,layer):
-        if len(self.ppoints) >= 1:
-            # 作成するオブジェクトをgeomに変換。修正するためのフィーチャーも取得
-            type = layer.geometryType()
-            if type == QgsWkbTypes.PolygonGeometry:
-                geom = QgsGeometry.fromPolygonXY([self.points])
-            else:
-                if layer.wkbType()== QgsWkbTypes.LineString:
-                    geom = QgsGeometry.fromPolylineXY(self.points)
-                elif layer.wkbType()== QgsWkbTypes.MultiLineString:
-                    geom = QgsGeometry.fromMultiPolylineXY([self.points])
-
-
-            if self.modify:
-                feature = self.getFeatureById(layer, self.featid)
-                if feature is None:
-                    QMessageBox.warning(None, "Warning", u"レイヤを確かめてください")
-                    return
-                continueFlag = self.editFeature(geom, feature)
-            else:
-                continueFlag = self.createFeature(geom)
-            if continueFlag is False:
-                self.resetPoints()
-                self.featid = None
-                self.editing = False
-                self.modify = False
+        num_ppoint = len(self.ppoints)
+        self.log("{}".format(num_ppoint))
+        # 作成するオブジェクトをgeomに変換。修正するためのフィーチャーも取得
+        type = layer.geometryType()
+        if type == QgsWkbTypes.PointGeometry and num_ppoint == 1:
+            geom = QgsGeometry.fromPointXY(self.points[0])
+        elif type == QgsWkbTypes.LineGeometry and num_ppoint >= 2:
+            if layer.wkbType() == QgsWkbTypes.LineString:
+                geom = QgsGeometry.fromPolylineXY(self.points)
+            elif layer.wkbType() == QgsWkbTypes.MultiLineString:
+                geom = QgsGeometry.fromMultiPolylineXY([self.points])
+        elif type == QgsWkbTypes.PolygonGeometry and num_ppoint >= 3:
+            geom = QgsGeometry.fromPolygonXY([self.points])
         else:
+            QMessageBox.warning(None, "Warning", u"レイヤのタイプが違います")
             self.resetPoints()
             self.featid = None
             self.editing = False
             self.modify = False
-        self.canvas.refresh()
+            return
+
+        if self.modify:
+            feature = self.getFeatureById(layer, self.featid)
+            if feature is None:
+                QMessageBox.warning(None, "Warning", u"レイヤを確かめてください")
+                return
+            continueFlag = self.editFeature(geom, feature)
+        else:
+            continueFlag = self.createFeature(geom)
+
+        if continueFlag is False:
+            self.resetPoints()
+            self.featid = None
+            self.editing = False
+            self.modify = False
 
     def updateControlPoint(self, point):
         # コントロールポイントを更新（ベジエも更新するために強制的に呼び出す）
@@ -448,8 +454,8 @@ class BezierEditingTool(QgsMapTool):
             pointsB = self.bezier(p1, c1, p2, c2)
         #self.log("idx:{}".format(idx))
         #self.log("pointsA:{}".format(len(self.points)))
-        if idx==0: #最初のアンカーは追加するだけなので、表示しない
-            pass
+        if idx==0: #最初のアンカーは追加するだけ
+            self.points = self.ppoints
         elif idx==1 and idx==len(self.ppoints)-1: #新規追加の2点目のとき。最初の表示
             self.points = pointsB
         elif idx >= 2 and idx==len(self.ppoints)-1: #2点目以降の追加とき
@@ -567,21 +573,30 @@ class BezierEditingTool(QgsMapTool):
         self.history = []
         self.alt = False
         self.ctrl = False
+
     # フィーチャをベジエ曲線のコントロールポイントに変換
     def convertFeatureToBezier(self, f):
         geom = QgsGeometry(f.geometry())
         self.check_crs()
         if self.layerCRS.srsid() != self.projectCRS.srsid():
             geom.transform(QgsCoordinateTransform(self.layerCRS, self.projectCRS, QgsProject.instance()))
+
         if geom.wkbType() == QgsWkbTypes.MultiLineString:
             polyline = geom.asMultiPolyline()[0]
         elif geom.wkbType() == QgsWkbTypes.LineString:
             polyline = geom.asPolyline()
+        elif geom.wkbType() == QgsWkbTypes.Point:
+            point = geom.asPoint()
+            self.insertNewPoint(0, point)
+            return True
         else:
-            QMessageBox.warning(None, "Warning", u"レイヤのタイプを確認してください")
+            QMessageBox.warning(None, "Warning", u"ベジエに変換できないレイヤタイプです")
+            return False
+
         if len(polyline) % 10 != 1:
             # 他のツールで編集されているのでベジエに変換できない。
             # 編集されていても偶然、あまりが1になる場合は、変換してしまう。
+            QMessageBox.warning(None, "Warning", u"他のツールで編集されたオブジェクトはベジエに変換できません")
             return False
         #51個ずつ取り出す。間の点は重複させる。最後の要素は余分なので取り除く。
         points = [polyline[i:i + self.bezier_num+1] for i in range(0, len(polyline), self.bezier_num)][:-1]
