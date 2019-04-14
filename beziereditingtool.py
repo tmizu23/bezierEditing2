@@ -94,7 +94,6 @@ class BezierEditingTool(QgsMapTool):
                 # 編集を確定する
                 if self.editing:
                     self.finish_drawing(layer)
-                    self.canvas.refresh()
                 # ベジエに変換する
                 else:
                     self.start_modify(layer,orgpoint)
@@ -329,6 +328,8 @@ class BezierEditingTool(QgsMapTool):
             self.featid = None
             self.editing = False
             self.modify = False
+
+        self.canvas.refresh()
 
     def updateControlPoint(self, point):
         # コントロールポイントを更新（ベジエも更新するために強制的に呼び出す）
@@ -785,32 +786,37 @@ class BezierEditingTool(QgsMapTool):
         if math.sqrt(dist) < d:
             near = True
         return near, anchoridx, vertexidx
-    # フィーチャを作成。属性を別のfeatureからコピーしたい場合は指定
-    def createFeature(self,geom,feat=None):
+
+    def createFeature(self, geom, feat=None):
         continueFlag = False
         layer = self.canvas.currentLayer()
+        provider = layer.dataProvider()
         self.check_crs()
         if self.layerCRS.srsid() != self.projectCRS.srsid():
             geom.transform(QgsCoordinateTransform(self.projectCRS, self.layerCRS, QgsProject.instance()))
-        layer.beginEditCommand("Feature added")
-        f = QgsVectorLayerUtils.createFeature(layer)
+        f = QgsFeature()
         fields = layer.fields()
         f.setFields(fields)
         f.setGeometry(geom)
+        # add attribute fields to feature
+
         if feat is not None:
             for i in range(fields.count()):
-                    f.setAttribute(i, feat.attributes()[i])
+                f.setAttribute(i, feat.attributes()[i])
 
         settings = QSettings()
         disable_attributes = settings.value("/qgis/digitizing/disable_enter_attribute_values_dialog", False, type=bool)
         if disable_attributes or feat is not None:
-            layer.addFeatures([f])
+            layer.beginEditCommand("Feature added")
+            layer.addFeature(f)
             layer.endEditCommand()
         else:
-            dlg = QgsAttributeDialog(layer, f, True, self.iface.mainWindow(),True)
+            dlg = QgsAttributeDialog(layer, f, True)
+            dlg.setAttribute(QtCore.Qt.WA_DeleteOnClose)
             dlg.setMode(QgsAttributeEditorContext.AddFeatureMode)
+            dlg.setEditCommandMessage("Feature added")
             if dlg.exec_():
-                layer.endEditCommand()
+                pass
             else:
                 layer.destroyEditCommand()
                 reply = QMessageBox.question(None, "Question", u"編集を続けますか？", QMessageBox.Yes,
@@ -818,7 +824,7 @@ class BezierEditingTool(QgsMapTool):
                 if reply == QMessageBox.Yes:
                     continueFlag = True
         return continueFlag
-    # フィーチャを編集
+
     def editFeature(self,geom,feat,showdlg=True):
         continueFlag = False
         layer = self.canvas.currentLayer()
