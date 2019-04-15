@@ -318,6 +318,10 @@ class BezierEditingTool(QgsMapTool):
             feature = self.getFeatureById(layer, self.featid)
             if feature is None:
                 QMessageBox.warning(None, "Warning", u"レイヤを確かめてください")
+                self.resetPoints()
+                self.featid = None
+                self.editing = False
+                self.modify = False
                 return
             continueFlag = self.editFeature(geom, feature)
         else:
