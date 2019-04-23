@@ -105,6 +105,7 @@ class BezierEditingTool(QgsMapTool):
                     if snaptype[1]:
                         self.mouse_state = "add_anchor"
                         #self.log("{}".format(self.mouse_state))
+
                         ret = self.insertNewPoint(len(self.ppoints), point[1])
                         if ret:
                             self.selected_point_idx = len(self.ppoints) - 1
@@ -119,15 +120,48 @@ class BezierEditingTool(QgsMapTool):
                         self.mouse_state = "move_handle"
                         self.selected_point_idx = snapidx[2]
                     # アンカーを挿入するとき
+                    # invert_bezierを利用してハンドルを再計算できる。
                     elif snaptype[3] and not snaptype[1]:
                         self.mouse_state = "insert_anchor"
-                        ret = self.insertNewPoint(snapidx[3], point[3])
+                        idx = (snapidx[3] - 1) // self.bezier_num + 1
+                        bezier_idx = (snapidx[3] - 1) % self.bezier_num + 1
+                        #self.log("bezier_idx:{},snapidx:{}".format(bezier_idx,snapidx[3]))
+                        if 2 < bezier_idx: #pointsが4点以上あれば再計算できる.挿入の左側
+                            pointsA = self.points[self.bezier_num * (idx - 1):snapidx[3]] + [point[3]]
+                            ps, cs, pe, ce = self.invert_bezier(pointsA)
+                            c1a = QgsPointXY(cs[0], cs[1])
+                            c2a = QgsPointXY(ce[0], ce[1])
+                            #self.log("{},{}".format(cs,ce))
+                        else: #4点未満の場合は、ハンドルをアンカーと同じにして直線で結ぶ
+                            c1a = self.points[self.bezier_num * (idx - 1)]
+                            c2a = point[3]
+                        if self.bezier_num -1 > bezier_idx: #挿入の右側
+                            pointsB = [point[3]]+self.points[snapidx[3]:(self.bezier_num * idx+1)]
+                            ps, cs, pe, ce = self.invert_bezier(pointsB,type="B")
+                            c1b = QgsPointXY(cs[0], cs[1])
+                            c2b = QgsPointXY(ce[0], ce[1])
+                            #self.log("{},{}".format(cs, ce))
+                        else:
+                            c1b = point[3]
+                            c2b = self.points[self.bezier_num * idx]
+
+                        ret = self.insertNewPoint(idx, point[3])
                         if ret:
-                            self.selected_point_idx = snapidx[3]
-                            self.history.append({"state": "insert_anchor", "pointidx": self.selected_point_idx})
-                            # if len(self.history) > 5:
-                            #     del self.history[0]
-                            self.updateControlPoint(point[3])
+                            self.selected_point_idx = idx
+                            self.history.append(
+                                {"state": "insert_anchor",
+                                 "pointidx": idx,
+                                 "ctrlpoint0": self.cpoints[(idx-1) * 2 + 1],
+                                 "ctrlpoint1": self.cpoints[(idx-1) * 2 + 4]
+                                 }
+                            )
+                        self.moveControlPoint((idx - 1) * 2 + 1, c1a)
+                        self.moveControlPoint((idx - 1) * 2 + 2, c2a)
+                        self.moveControlPoint((idx - 1) * 2 + 3, c1b)
+                        self.moveControlPoint((idx - 1) * 2 + 4, c2b)
+
+
+
                 # Shiftを押しながら
                 elif self.shift:
                     # アンカーを削除するとき
@@ -391,6 +425,8 @@ class BezierEditingTool(QgsMapTool):
                 self.moveControlPoint(act["pointidx"],act["point"])
             elif act["state"]=="insert_anchor":
                 self.deletePoint(act["pointidx"])
+                self.moveControlPoint((act["pointidx"]-1) * 2 + 1, act["ctrlpoint0"])
+                self.moveControlPoint((act["pointidx"]-1) * 2 + 2, act["ctrlpoint1"])
             elif act["state"]=="delete_anchor":
                 self.insertNewPoint(act["pointidx"],act["point"])
                 self.moveControlPoint(act["pointidx"] * 2, act["ctrlpoint0"])
@@ -417,11 +453,11 @@ class BezierEditingTool(QgsMapTool):
                     self.featid = None
                     self.editing = False
                     self.modify = False
-        if self.mode=="bezier" and len(self.history)==0:
-            self.resetPoints()
-            self.featid = None
-            self.editing = False
-            self.modify = False
+        # if self.mode=="bezier" and len(self.history)==0:
+        #     self.resetPoints()
+        #     self.featid = None
+        #     self.editing = False
+        #     self.modify = False
         if self.show_anchor:
             self.showBezierMarker()
         else:
@@ -598,6 +634,7 @@ class BezierEditingTool(QgsMapTool):
             QMessageBox.warning(None, "Warning", u"ベジエに変換できないレイヤタイプです")
             return False
 
+        #self.log("len:{}".format(len(polyline)))
         if len(polyline) % 10 != 1:
             # 他のツールで編集されているのでベジエに変換できない。
             # 編集されていても偶然、あまりが1になる場合は、変換してしまう。
@@ -938,7 +975,7 @@ class BezierEditingTool(QgsMapTool):
             d = self.canvas.mapUnitsPerPixel() * 10
             if math.sqrt(dist) < d:
                 snaptype[3] = True
-                idx[3] = (afterVertex - 1) // self.bezier_num + 1
+                idx[3] = afterVertex #(afterVertex - 1) // self.bezier_num + 1
                 pnt[3] = minDistPoint
                 #self.log("{},{}".format(afterVertex,idx[3]))
                 #self.snapmarker.setCenter(point) #minDistPointにするとペンの時に書きづらい
@@ -979,19 +1016,27 @@ class BezierEditingTool(QgsMapTool):
             by = (1 - t) ** 3 * p1.y() + 3 * t * (1 - t) ** 2 * c1.y() + 3 * t ** 2 * (1 - t) * c2.y() + t ** 3 * p2.y()
             points.append(QgsPointXY(bx, by))
         return points
-    # 50点で補間されたベジエ曲線のリストから始点、終点のコントロールポイントを返す。
-    def invert_bezier(self, points):
+    # 10点で補間されたベジエ曲線のリストから始点、終点のコントロールポイントを返す。
+    def invert_bezier(self, points, type="A"):
         # pointsから左右のコントロールポイントを求める
         # t1とt2の時の座標を代入して、連立方程式の解を解く
+        # type B は 後ろの2点を使って連立方程式を解く。挿入時の右側の処理のために使用。
         ps = np.array(points[0])
         pe = np.array(points[-1])
-        #tの分割数 今は固定値で50
+        #tの分割数
         tnum = len(points)-1
         #self.log("{},{},{}".format(tnum,ps,pe))
-        t1 = 1.0 / tnum
-        p1 = np.array(points[1])
-        t2 = 2.0 / tnum
-        p2 = np.array(points[2])
+        if type=="A":
+            t1 = 1.0 / tnum
+            p1 = np.array(points[1])
+            t2 = 2.0 / tnum
+            p2 = np.array(points[2])
+        elif type=="B":
+            t1 = (tnum-1) / tnum
+            p1 = np.array(points[-2])
+            t2 = (tnum-2) / tnum
+            p2 = np.array(points[-3])
+
         aa = 3 * t1 * (1 - t1) ** 2
         bb = 3 * t1 ** 2 * (1 - t1)
         cc = ps * (1 - t1) ** 3 + pe * t1 ** 3 - p1
