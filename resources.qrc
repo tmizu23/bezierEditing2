@@ -2,6 +2,7 @@
     <qresource prefix="/plugins/bezierEditing2" >
         <file>icon/beziericon.svg</file>
         <file>icon/penicon.svg</file>
+        <file>icon/spliticon.svg</file>
         <file>icon/anchoronicon.svg</file>
         <file>icon/undoicon.svg</file>
         <file>icon/anchor.svg</file>
@@ -11,5 +12,6 @@
         <file>icon/handle_add.svg</file>
         <file>icon/handle_del.svg</file>
         <file>icon/drawline.svg</file>
+        <file>icon/mCrossHair.svg</file>
     </qresource>
 </RCC>

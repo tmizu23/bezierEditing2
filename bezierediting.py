@@ -50,6 +50,14 @@ class BezierEditing2(object):
         self.pen_edit.triggered.connect(self.penediting)
         self.toolbar.addAction(self.pen_edit)
 
+        # Create split action
+        self.split = QAction(QIcon(":/plugins/bezierEditing2/icon/spliticon.svg"),"Bezier_Split", self.iface.mainWindow())
+        self.split.setObjectName("BezierEditing_split")
+        self.split.setEnabled(False)
+        self.split.setCheckable(True)
+        self.split.triggered.connect(self.spliting)
+        self.toolbar.addAction(self.split)
+
         # Create show anchor option
         self.anchor_on = QAction(QIcon(":/plugins/bezierEditing2/icon/anchoronicon.svg"),"Bezier_Show Anchor", self.iface.mainWindow())
         self.anchor_on.setObjectName("BezierEditing_anchor_on")
@@ -80,6 +88,11 @@ class BezierEditing2(object):
         self.pen_edit.setChecked(True)
         self.beziertool.mode = "pen"
 
+    def spliting(self):
+        self.canvas.setMapTool(self.beziertool)
+        self.split.setChecked(True)
+        self.beziertool.mode = "split"
+
     def anchoron(self,checked):
         if checked:
             self.beziertool.showBezierMarker()
@@ -98,6 +111,7 @@ class BezierEditing2(object):
             ### add for tool
             self.bezier_edit.setEnabled(True)
             self.pen_edit.setEnabled(True)
+            self.split.setEnabled(True)
             self.anchor_on.setEnabled(True)
             self.undo.setEnabled(True)
 
@@ -114,6 +128,7 @@ class BezierEditing2(object):
             ### add for tool
             self.bezier_edit.setEnabled(False)
             self.pen_edit.setEnabled(False)
+            self.split.setEnabled(False)
             self.anchor_on.setEnabled(False)
             self.undo.setEnabled(False)
 
@@ -132,12 +147,14 @@ class BezierEditing2(object):
     def deactivate(self):
         self.bezier_edit.setChecked(False)
         self.pen_edit.setChecked(False)
+        self.split.setChecked(False)
 
         #self.active = False
 
     def unload(self):
         self.toolbar.removeAction(self.bezier_edit)
         self.toolbar.removeAction(self.pen_edit)
+        self.toolbar.removeAction(self.split)
         self.toolbar.removeAction(self.anchor_on)
         self.toolbar.removeAction(self.undo)
         del self.toolbar

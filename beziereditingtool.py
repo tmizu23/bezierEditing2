@@ -60,8 +60,9 @@ class BezierEditingTool(QgsMapTool):
         self.addhandle_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/handle_add.svg'), 1, 1)
         self.deletehandle_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/handle_del.svg'), 1, 1)
         self.drawline_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/drawline.svg'), 1, 1)
+        self.split_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/mCrossHair.svg'), -1, -1)
         self.tolerance = 1
-        self.mode = "bezier"
+        self.mode = "bezier" # bezier, pen , split
         self.snapmarker.hide()
     ####### キー、キャンパスイベント
     def keyPressEvent(self, event):
@@ -123,42 +124,22 @@ class BezierEditingTool(QgsMapTool):
                     # invert_bezierを利用してハンドルを再計算できる。
                     elif snaptype[3] and not snaptype[1]:
                         self.mouse_state = "insert_anchor"
-                        idx = (snapidx[3] - 1) // self.bezier_num + 1
-                        bezier_idx = (snapidx[3] - 1) % self.bezier_num + 1
-                        #self.log("bezier_idx:{},snapidx:{}".format(bezier_idx,snapidx[3]))
-                        if 2 < bezier_idx: #pointsが4点以上あれば再計算できる.挿入の左側
-                            pointsA = self.points[self.bezier_num * (idx - 1):snapidx[3]] + [point[3]]
-                            ps, cs, pe, ce = self.invert_bezier(pointsA)
-                            c1a = QgsPointXY(cs[0], cs[1])
-                            c2a = QgsPointXY(ce[0], ce[1])
-                            #self.log("{},{}".format(cs,ce))
-                        else: #4点未満の場合は、ハンドルをアンカーと同じにして直線で結ぶ
-                            c1a = self.points[self.bezier_num * (idx - 1)]
-                            c2a = point[3]
-                        if self.bezier_num -1 > bezier_idx: #挿入の右側
-                            pointsB = [point[3]]+self.points[snapidx[3]:(self.bezier_num * idx+1)]
-                            ps, cs, pe, ce = self.invert_bezier(pointsB,type="B")
-                            c1b = QgsPointXY(cs[0], cs[1])
-                            c2b = QgsPointXY(ce[0], ce[1])
-                            #self.log("{},{}".format(cs, ce))
-                        else:
-                            c1b = point[3]
-                            c2b = self.points[self.bezier_num * idx]
-
-                        ret = self.insertNewPoint(idx, point[3])
+                        ppoint_idx = (snapidx[3] - 1) // self.bezier_num + 1
+                        c1a, c2a, c1b, c2b = self.recalc_handle_position(snapidx[3], ppoint_idx, point[3])
+                        ret = self.insertNewPoint(ppoint_idx, point[3])
                         if ret:
-                            self.selected_point_idx = idx
+                            self.selected_point_idx = ppoint_idx
                             self.history.append(
                                 {"state": "insert_anchor",
-                                 "pointidx": idx,
-                                 "ctrlpoint0": self.cpoints[(idx-1) * 2 + 1],
-                                 "ctrlpoint1": self.cpoints[(idx-1) * 2 + 4]
+                                 "pointidx": ppoint_idx,
+                                 "ctrlpoint0": self.cpoints[(ppoint_idx-1) * 2 + 1],
+                                 "ctrlpoint1": self.cpoints[(ppoint_idx-1) * 2 + 4]
                                  }
                             )
-                        self.moveControlPoint((idx - 1) * 2 + 1, c1a)
-                        self.moveControlPoint((idx - 1) * 2 + 2, c2a)
-                        self.moveControlPoint((idx - 1) * 2 + 3, c1b)
-                        self.moveControlPoint((idx - 1) * 2 + 4, c2b)
+                        self.moveControlPoint((ppoint_idx - 1) * 2 + 1, c1a)
+                        self.moveControlPoint((ppoint_idx - 1) * 2 + 2, c2a)
+                        self.moveControlPoint((ppoint_idx - 1) * 2 + 3, c1b)
+                        self.moveControlPoint((ppoint_idx - 1) * 2 + 4, c2b)
 
 
 
@@ -243,6 +224,97 @@ class BezierEditingTool(QgsMapTool):
                     self.mouse_state = "draw_newline"
                     self.rbl.reset(QgsWkbTypes.LineGeometry)  # ベイジライン
                     self.rbl.addPoint(orgpoint)  # 最初のポイントは同じ点が2つ追加される仕様？
+        elif self.mode == "split":
+            # 右クリックで確定
+            if event.button() == Qt.RightButton:
+                if self.editing:
+                    self.finish_drawing(layer)
+                else:
+                    if layer.geometryType() != QgsWkbTypes.LineGeometry:
+                        QMessageBox.warning(None, "Warning", u"ライン以外はベジエに変換できません")
+                        return
+                    self.start_modify(layer,orgpoint)
+            # 左クリック
+            elif event.button() == Qt.LeftButton:
+                if self.editing and snaptype[3] and not snaptype[1]:
+                    #編集中で編集中のラバーバンドに近いなら
+                    #self.mouse_state = "insert_anchor"
+                    ppoint_idx = (snapidx[3] - 1) // self.bezier_num + 1
+                    c1a, c2a, c1b, c2b = self.recalc_handle_position(snapidx[3], ppoint_idx, point[3])
+                    ret = self.insertNewPoint(ppoint_idx, point[3])
+                    if ret:
+                        self.selected_point_idx = ppoint_idx
+                        self.history.append(
+                            {"state": "insert_anchor",
+                             "pointidx": ppoint_idx,
+                             "ctrlpoint0": self.cpoints[(ppoint_idx-1) * 2 + 1],
+                             "ctrlpoint1": self.cpoints[(ppoint_idx-1) * 2 + 4]
+                             }
+                        )
+                        self.moveControlPoint((ppoint_idx - 1) * 2 + 1, c1a)
+                        self.moveControlPoint((ppoint_idx - 1) * 2 + 2, c2a)
+                        self.moveControlPoint((ppoint_idx - 1) * 2 + 3, c1b)
+                        self.moveControlPoint((ppoint_idx - 1) * 2 + 4, c2b)
+
+                        #二つに分ける
+                        lineA = self.points[0:ppoint_idx * self.bezier_num+1]
+                        lineB = self.points[ppoint_idx * self.bezier_num:]
+
+                        if self.featid is None:
+                            self.undo()
+                            QMessageBox.warning(None, "Warning", u"フィーチャーがありません")
+                            return
+                        feature = self.getFeatureById(layer, self.featid)
+                        # 作成するオブジェクトをgeomに変換。修正するためのフィーチャーも取得
+                        type = layer.geometryType()
+                        if type == QgsWkbTypes.LineGeometry:
+                            if layer.wkbType() == QgsWkbTypes.LineString:
+                                geomA = QgsGeometry.fromPolylineXY(lineA)
+                                geomB = QgsGeometry.fromPolylineXY(lineB)
+                            elif layer.wkbType() == QgsWkbTypes.MultiLineString:
+                                geomA = QgsGeometry.fromMultiPolylineXY([lineA])
+                                geomB = QgsGeometry.fromMultiPolylineXY([lineB])
+                        else:
+                            QMessageBox.warning(None, "Warning", u"レイヤのタイプが違います")
+                            self.resetPoints()
+                            self.featid = None
+                            self.editing = False
+                            self.modify = False
+                            return
+
+                        self.createFeature(geomB, feature)
+                        self.editFeature(geomA, feature, False)
+                        layer.select(feature.id())
+
+                        self.resetPoints()
+                        self.featid = None
+                        self.editing = False
+                        self.modify = False
+
+    def recalc_handle_position(self, point_idx, ppoint_idx, pnt):
+        bezier_idx = (point_idx - 1) % self.bezier_num + 1
+        # self.log("bezier_idx:{},snapidx:{}".format(bezier_idx,point_idx))
+        if 2 < bezier_idx:  # pointsが4点以上あれば再計算できる.挿入の左側
+            pointsA = self.points[self.bezier_num * (ppoint_idx - 1):point_idx] + [pnt]
+            ps, cs, pe, ce = self.invert_bezier(pointsA)
+            c1a = QgsPointXY(cs[0], cs[1])
+            c2a = QgsPointXY(ce[0], ce[1])
+            # self.log("{},{}".format(cs,ce))
+        else:  # 4点未満の場合は、ハンドルをアンカーと同じにして直線で結ぶ
+            c1a = self.points[self.bezier_num * (ppoint_idx - 1)]
+            c2a = pnt
+        if self.bezier_num - 1 > bezier_idx:  # 挿入の右側
+            pointsB = [pnt] + self.points[point_idx:(self.bezier_num * ppoint_idx + 1)]
+            ps, cs, pe, ce = self.invert_bezier(pointsB, type="B")
+            c1b = QgsPointXY(cs[0], cs[1])
+            c2b = QgsPointXY(ce[0], ce[1])
+            # self.log("{},{}".format(cs, ce))
+        else:
+            c1b = pnt
+            c2b = self.points[self.bezier_num * ppoint_idx]
+
+        return (c1a,c2a,c1b,c2b)
+
     def canvasMoveEvent(self, event):
         layer = self.canvas.currentLayer()
         if not layer or layer.type() != QgsMapLayer.VectorLayer:
@@ -291,6 +363,9 @@ class BezierEditingTool(QgsMapTool):
                 self.rbl.addPoint(pnt)
             elif self.mouse_state == "draw_updateline":
                 self.edit_rbl.addPoint(pnt)
+        elif self.mode == "split":
+            self.canvas.setCursor(self.split_cursor)
+
     def canvasReleaseEvent(self, event):
         layer = self.canvas.currentLayer()
         if not layer or layer.type() != QgsMapLayer.VectorLayer:
@@ -309,6 +384,11 @@ class BezierEditingTool(QgsMapTool):
                 elif self.mouse_state == "draw_newline":
                     self.draw_newline(snaptype)
                 self.mouse_state = "free"
+        elif self.mode == "split":
+            self.selected_point_idx = None
+            self.mouse_state = "free"
+            self.moveFlag = False
+
         if self.show_anchor:
             self.showBezierMarker()
         else:
