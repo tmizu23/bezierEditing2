@@ -59,12 +59,12 @@ class BezierEditing2(object):
         self.toolbar.addAction(self.split)
 
         # Create show anchor option
-        self.anchor_on = QAction(QIcon(":/plugins/bezierEditing2/icon/anchoronicon.svg"),"Bezier_Show Anchor", self.iface.mainWindow())
-        self.anchor_on.setObjectName("BezierEditing_anchor_on")
-        self.anchor_on.setCheckable(True)
-        self.anchor_on.setEnabled(False)
-        self.anchor_on.toggled.connect(self.anchoron)
-        self.toolbar.addAction(self.anchor_on)
+        self.show_handle = QAction(QIcon(":/plugins/bezierEditing2/icon/showhandleicon.svg"),"Bezier_Show Anchor", self.iface.mainWindow())
+        self.show_handle.setObjectName("BezierEditing_show_handle")
+        self.show_handle.setCheckable(True)
+        self.show_handle.setEnabled(False)
+        self.show_handle.toggled.connect(self.showhandle)
+        self.toolbar.addAction(self.show_handle)
 
         # Create undo option
         self.undo = QAction(QIcon(":/plugins/bezierEditing2/icon/undoicon.svg"),"Bezier_Undo", self.iface.mainWindow())
@@ -93,12 +93,8 @@ class BezierEditing2(object):
         self.split.setChecked(True)
         self.beziertool.mode = "split"
 
-    def anchoron(self,checked):
-        if checked:
-            self.beziertool.showBezierMarker()
-        else:
-            self.beziertool.hideBezierMarker()
-
+    def showhandle(self,checked):
+        self.beziertool.showHandle(checked)
 
     def toggle(self):
         mc = self.canvas
@@ -112,7 +108,7 @@ class BezierEditing2(object):
             self.bezier_edit.setEnabled(True)
             self.pen_edit.setEnabled(True)
             self.split.setEnabled(True)
-            self.anchor_on.setEnabled(True)
+            self.show_handle.setEnabled(True)
             self.undo.setEnabled(True)
 
             try:  # remove any existing connection first
@@ -129,7 +125,7 @@ class BezierEditing2(object):
             self.bezier_edit.setEnabled(False)
             self.pen_edit.setEnabled(False)
             self.split.setEnabled(False)
-            self.anchor_on.setEnabled(False)
+            self.show_handle.setEnabled(False)
             self.undo.setEnabled(False)
 
             if layer.type() == QgsMapLayer.VectorLayer:
@@ -155,7 +151,7 @@ class BezierEditing2(object):
         self.toolbar.removeAction(self.bezier_edit)
         self.toolbar.removeAction(self.pen_edit)
         self.toolbar.removeAction(self.split)
-        self.toolbar.removeAction(self.anchor_on)
+        self.toolbar.removeAction(self.show_handle)
         self.toolbar.removeAction(self.undo)
         del self.toolbar
 
