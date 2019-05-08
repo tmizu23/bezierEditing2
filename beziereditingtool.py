@@ -103,6 +103,7 @@ class BezierEditingTool(QgsMapTool):
                         self.mouse_state = "add_anchor"
                         self.selected_idx = self.b.anchorCount()
                         self.b.add_anchor(self.selected_idx, point[1])
+                        self.m.addAnchorMarker(self.selected_idx, point[1])
 
                 # Altを押しながら
                 elif self.alt:
@@ -114,15 +115,19 @@ class BezierEditingTool(QgsMapTool):
                     elif snaptype[3] and not snaptype[1]:
                         self.mouse_state = "insert_anchor"
                         self.b.insert_anchor(snapidx[3], point[3])
+                        self.m.showBezierLineMarkers()
 
                 # Shiftを押しながら
                 elif self.shift:
                     # アンカーを削除するとき
                     if snaptype[1]:
                         self.b.delete_anchor(snapidx[1],point[1])
+                        self.m.deleteAnchorMarker(snapidx[1])
                     # ハンドルを削除するとき
                     elif snaptype[2]:
                         self.b.delete_handle(snapidx[2],point[2])
+                        pnt = self.b.getAnchor(int(snapidx[2] / 2))
+                        self.m.moveHandleMarker(snapidx[2], pnt)
                 else:
                     # a. ハンドルの移動
                     # b. ポイントの移動
@@ -134,24 +139,27 @@ class BezierEditingTool(QgsMapTool):
                         self.mouse_state = "move_anchor"
                         self.selected_idx = snapidx[1]
                         self.b.move_anchor(snapidx[1],point[1])
+                        self.m.moveAnchorMarker(snapidx[1],point[1])
 
                     # 「ハンドルの移動」かどうか
                     elif snaptype[2]:
                         self.mouse_state="move_handle"
                         self.selected_idx = snapidx[2]
                         self.b.move_handle(snapidx[2],point[2])
+                        self.m.moveHandleMarker(snapidx[2],point[2])
 
                     else:
                     # 上のどれでもなければ「新規ポイント追加」
                         if not self.editing:
                             self.b = BezierGeometry()
                             self.m = BezierMarker(self.canvas,self.b)
-                            self.b.setBezierMarker(self.m)
+                            #self.b.setBezierMarker(self.m)
                             self.editing = True
                         pnt = point[0]
                         self.mouse_state = "add_anchor"
                         self.selected_idx = self.b.anchorCount()
                         self.b.add_anchor(self.selected_idx, pnt)
+                        self.m.addAnchorMarker(self.selected_idx, pnt)
 
         elif self.mode == "pen":
             # 右クリックで確定
@@ -169,7 +177,7 @@ class BezierEditingTool(QgsMapTool):
                 if not self.editing:
                     self.b = BezierGeometry()
                     self.m = BezierMarker(self.canvas,self.b)
-                    self.b.setBezierMarker(self.b)
+                    #self.b.setBezierMarker(self.b)
                     pnt = orgpoint
                     self.editing = True
                 # 編集中でベジエ曲線に近いなら修正
@@ -219,7 +227,16 @@ class BezierEditingTool(QgsMapTool):
                     layer.select(feature.id())
                     self.resetPoints()
 
+    def moveHandle2(self, anchor_idx, point):
+        # アンカーの両側のハンドルを移動
+        handle_idx = anchor_idx * 2
+        p = self.b.getAnchor(anchor_idx)
+        pb = QgsPointXY(p[0] - (point[0] - p[0]), p[1] - (point[1] - p[1]))
 
+        self.b.moveHandle(handle_idx, pb)
+        self.b.moveHandle(handle_idx + 1, point)
+        self.m.moveHandleMarker(handle_idx, pb)
+        self.m.moveHandleMarker(handle_idx + 1, point)
 
     def canvasMoveEvent(self, event):
         layer = self.canvas.currentLayer()
@@ -231,7 +248,8 @@ class BezierEditingTool(QgsMapTool):
             self.moveFlag = True
             # 追加時のドラッグはハンドルの移動
             if self.mouse_state=="add_anchor":
-                self.b.moveHandle2(self.selected_idx, point[0])
+                self.moveHandle2(self.selected_idx, point[0])
+
             elif self.mouse_state == "insert_anchor":
                 pass
             elif self.alt and snaptype[1] and snaptype[2]:
@@ -247,6 +265,7 @@ class BezierEditingTool(QgsMapTool):
             # 選択されたハンドルの移動
             elif self.mouse_state=="move_handle":
                 self.b.moveHandle(self.selected_idx, orgpoint)
+                self.m.moveHandleMarker(self.selected_idx, orgpoint)
             # 選択されたポイントの移動
             elif self.mouse_state=="move_anchor":
                 pnt = point[0]
@@ -254,6 +273,8 @@ class BezierEditingTool(QgsMapTool):
                 if snaptype[1]:
                     pnt = point[1]
                 self.b.moveAnchor(self.selected_idx, pnt)
+                self.m.moveAnchorMarker(self.selected_idx, pnt)
+
             else:
                 if snaptype[1]:
                     self.canvas.setCursor(self.movehandle_cursor)
@@ -291,8 +312,8 @@ class BezierEditingTool(QgsMapTool):
             self.mouse_state = "free"
             self.moveFlag = False
 
-        #self.m.showHandle(self.show_handle)
-            
+        self.m.showHandle(self.show_handle)
+
     ####### イベント処理からの呼び出し
     # ベジエ関係
     def start_editing(self,layer,orgpoint):
@@ -348,10 +369,12 @@ class BezierEditingTool(QgsMapTool):
         geom = self.pen_rbl.asGeometry()
         d = self.canvas.mapUnitsPerPixel() * 10
         self.b.modified_by_geometry(geom, d, snaptype[4])  # 編集箇所の次のハンドル以降を削除
+        self.m.showBezierLineMarkers()
         self.pen_rbl.reset()
-        
+
     # ポイント、ハンドルの配列、マーカー、ラインとベジエライン、履歴を初期化
     def resetPoints(self):
+        self.m.removeBezierLineMarkers()
         self.b.reset()
         self.featid = None
         self.editing = False
@@ -366,8 +389,10 @@ class BezierEditingTool(QgsMapTool):
 
         if geom.type() == QgsWkbTypes.PointGeometry:
             point = geom.asPoint()
-            self.m = BezierMarker(self.canvas)
-            self.b = BezierGeometry.converPointToBezier(point,self.m)
+
+            self.b = BezierGeometry.convertPointToBezier(point)
+            self.m = BezierMarker(self.canvas, self.b)
+            self.m.addAnchorMarker(0, point)
             return True
         elif geom.type() == QgsWkbTypes.LineGeometry:
             if geom.wkbType() == QgsWkbTypes.MultiLineString:
@@ -381,8 +406,11 @@ class BezierEditingTool(QgsMapTool):
                 QMessageBox.warning(None, "Warning", u"他のツールで編集されたオブジェクトはベジエに変換できません")
                 return False
 
+
+            self.b = BezierGeometry.convertLineToBezier(polyline)
             self.m = BezierMarker(self.canvas, self.b)
-            self.b = BezierGeometry.convertLineToBezier(polyline, self.m, self.show_handle)
+            self.m.showBezierLineMarkers(self.show_handle)
+
             return True
         else:
             QMessageBox.warning(None, "Warning", u"ベジエに変換できないレイヤタイプです")
@@ -561,10 +589,11 @@ class BezierEditingTool(QgsMapTool):
 
     # アンドゥ処理
     def undo(self):
-        history_length = self.b.undo(self.show_handle)
+        history_length = self.b.undo()
+        self.m.showBezierLineMarkers(self.show_handle)
         if history_length==0:
             self.resetPoints()
-        
+
     def showHandle(self,checked):
         self.show_handle = checked
         self.m.showHandle(checked)

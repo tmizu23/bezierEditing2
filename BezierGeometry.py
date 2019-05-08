@@ -12,20 +12,16 @@ class BezierGeometry:
         self.anchor = []  # ポイント
         self.handle = []  # コントロールポイント
         self.history = []  # undo履歴
-        self.m = None
 
     @classmethod
-    def convertPointToBezier(cls, point,marker):
+    def convertPointToBezier(cls, point):
         b = cls()
-        b.setBezierMarker(marker)
         b._addAnchor(0, point)
-        self.m.addAnchorMarker(b, 0, point)
         return b
 
     @classmethod
-    def convertLineToBezier(cls, polyline, marker, show_handle):
+    def convertLineToBezier(cls, polyline):
         b = cls()
-        b.setBezierMarker(marker)
         point_list = b._pointList(polyline)
         for i, points_i in enumerate(point_list):
             ps, cs, pe, ce = b._invertBezier(points_i)
@@ -48,16 +44,12 @@ class BezierGeometry:
                 b.moveHandle((i + 1) * 2, c2)
                 b.moveHandle((i + 1) * 2 + 1, c3)
 
-        self.m.showBezierLineMarkers(show_handle)
         return b
-
-    def setBezierMarker(self, bezier_marker):
-        self.m = bezier_marker
 
     def add_anchor(self, idx, point):
         self.history.append({"state": "add_anchor", "pointidx": idx})
         self._addAnchor(idx, point)
-        self.m.addAnchorMarker(idx, point)
+
 
     def delete_anchor(self, idx, point):
         self.history.append(
@@ -69,7 +61,7 @@ class BezierGeometry:
              }
         )
         self._deleteAnchor(idx)
-        self.m.deleteAnchorMarker(idx)
+
 
     def delete_handle(self, idx, point):
         self.history.append(
@@ -80,26 +72,17 @@ class BezierGeometry:
         )
         pnt = self.getAnchor(int(idx / 2))
         self.moveHandle(idx, pnt)
-        self.m.moveHandleMarker(idx, pnt)
     
     def move_anchor(self, idx, point):
         self.history.append({"state": "move_anchor", "pointidx": idx, "point": point})
-        self.m.moveAnchorMarker(idx, point)
+
     
     def move_handle(self, idx, point):
         self.history.append({"state": "move_handle", "pointidx": idx, "point": point})
-        self.m.moveHandleMarker(idx, point)
 
-    def moveHandle2(self, anchor_idx, point):
-        # アンカーの両側のハンドルを移動
-        handle_idx = anchor_idx * 2
-        p = self.getAnchor(anchor_idx)
-        pb = QgsPointXY(p[0] - (point[0] - p[0]), p[1] - (point[1] - p[1]))
 
-        self.moveHandle(handle_idx, pb)
-        self.moveHandle(handle_idx + 1, point)
-        self.m.moveHandleMarker(handle_idx, pb)
-        self.m.moveHandleMarker(handle_idx + 1, point)
+
+
 
     # ポイントをベジエ曲線に挿入してハンドルを調整
     def insert_anchor(self,point_idx, point):
@@ -112,7 +95,6 @@ class BezierGeometry:
              }
         )
         self._insertAnchorPointToBezier(point_idx, anchor_idx, point)
-        self.m.showBezierLineMarkers()
 
 
     # ジオメトリのペンでの修正
@@ -210,7 +192,7 @@ class BezierGeometry:
             if snap_to_start:
                 self.moveAnchor(self.anchorCount() - 1, self.getAnchor(0))
 
-            self.m.showBezierLineMarkers()
+
 
     # ベジエ曲線をpointの位置で二つのラインに分割したラインを返す
     def split_line(self, point_idx, point):
@@ -233,7 +215,7 @@ class BezierGeometry:
         self.anchor = []  # ポイント
         self.handle = []  # コントロールポイント
         self.history = [] # undoの履歴
-        self.m.removeBezierLineMarkers(self)
+
 
     # 特定のアンカーを移動してベジエ曲線を更新
     def moveAnchor(self, idx, point):
@@ -286,7 +268,7 @@ class BezierGeometry:
             self.points[self._pointsIdx(idxP):self._pointsIdx(idxP + 1) + 1] = points
 
     # アンドゥ処理
-    def undo(self,show_handle):
+    def undo(self):
         if len(self.history)>0:
             act = self.history.pop()
             if act["state"]=="add_anchor":
@@ -325,7 +307,7 @@ class BezierGeometry:
                     act = self.history.pop()
                 if direction=="reverse":
                     self._flipBezierLine()
-            self.m.showBezierLineMarkers(self,show_handle)
+
         return  len(self.history)
 
     # ポイントをベジエ曲線に挿入してハンドルを調整
