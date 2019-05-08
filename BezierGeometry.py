@@ -46,10 +46,14 @@ class BezierGeometry:
 
         return b
 
+    def asGeometry(self):
+        geom = QgsGeometry.fromPolylineXY(self.points)
+        return geom
+
+
     def add_anchor(self, idx, point):
         self.history.append({"state": "add_anchor", "pointidx": idx})
         self._addAnchor(idx, point)
-
 
     def delete_anchor(self, idx, point):
         self.history.append(
@@ -61,7 +65,6 @@ class BezierGeometry:
              }
         )
         self._deleteAnchor(idx)
-
 
     def delete_handle(self, idx, point):
         self.history.append(
@@ -80,8 +83,14 @@ class BezierGeometry:
     def move_handle(self, idx, point):
         self.history.append({"state": "move_handle", "pointidx": idx, "point": point})
 
-
-
+    def move_handle2(self, anchor_idx, point):
+        # アンカーの両側のハンドルを移動
+        handle_idx = anchor_idx * 2
+        p = self.getAnchor(anchor_idx)
+        pb = QgsPointXY(p[0] - (point[0] - p[0]), p[1] - (point[1] - p[1]))
+        self.moveHandle(handle_idx, pb)
+        self.moveHandle(handle_idx + 1, point)
+        return handle_idx,pb
 
 
     # ポイントをベジエ曲線に挿入してハンドルを調整
@@ -95,7 +104,6 @@ class BezierGeometry:
              }
         )
         self._insertAnchorPointToBezier(point_idx, anchor_idx, point)
-
 
     # ジオメトリのペンでの修正
     def modified_by_geometry(self, update_geom, d, snap_to_start):
@@ -193,14 +201,18 @@ class BezierGeometry:
                 self.moveAnchor(self.anchorCount() - 1, self.getAnchor(0))
 
 
-
     # ベジエ曲線をpointの位置で二つのラインに分割したラインを返す
-    def split_line(self, point_idx, point):
-        anchor_idx = self._AnchorIdx(point_idx)
-        self._insertAnchorPointToBezier(point_idx, anchor_idx, point)
-        # 二つに分ける
-        lineA = self.points[0:self._pointsIdx(anchor_idx) + 1]
-        lineB = self.points[self._pointsIdx(anchor_idx):]
+    def split_line(self, idx, point, isAnchor):
+
+        if isAnchor:
+            lineA = self.points[0:self._pointsIdx(idx) + 1]
+            lineB = self.points[self._pointsIdx(idx):]
+        else:
+            anchor_idx = self._AnchorIdx(idx)
+            self._insertAnchorPointToBezier(idx, anchor_idx, point)
+            # 二つに分ける
+            lineA = self.points[0:self._pointsIdx(anchor_idx) + 1]
+            lineB = self.points[self._pointsIdx(anchor_idx):]
 
         return lineA, lineB
 

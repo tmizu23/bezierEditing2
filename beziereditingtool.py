@@ -177,12 +177,13 @@ class BezierEditingTool(QgsMapTool):
                 if not self.editing:
                     self.b = BezierGeometry()
                     self.m = BezierMarker(self.canvas,self.b)
-                    #self.b.setBezierMarker(self.b)
                     pnt = orgpoint
                     self.editing = True
                 # 編集中でベジエ曲線に近いなら修正
                 elif self.editing and snaptype[3]:
                     pnt = point[3]
+                else:
+                    return
                 self.mouse_state = "draw_line"
                 self.pen_rbl.reset(QgsWkbTypes.LineGeometry)
                 self.pen_rbl.addPoint(pnt)
@@ -200,13 +201,16 @@ class BezierEditingTool(QgsMapTool):
             # 左クリック
             elif event.button() == Qt.LeftButton:
                 # 編集中で編集中のラバーバンドに近いなら
-                if self.editing and snaptype[3] and not snaptype[1]:
+                if self.editing:
                     if self.featid is None:
                         QMessageBox.warning(None, "Warning", u"フィーチャーがありません")
                         return
-
-                    lineA, lineB = self.b.split_line(snapidx[3],point[3])
-                    feature = self.getFeatureById(layer, self.featid)
+                    if snaptype[1]:
+                        lineA, lineB = self.b.split_line(snapidx[1], point[1],isAnchor=True)
+                    elif snaptype[3]:
+                        lineA, lineB = self.b.split_line(snapidx[3],point[3],isAnchor=False)
+                    else:
+                        return
                     # 作成するオブジェクトをgeomに変換。修正するためのフィーチャーも取得
                     type = layer.geometryType()
                     if type == QgsWkbTypes.LineGeometry:
@@ -219,24 +223,13 @@ class BezierEditingTool(QgsMapTool):
                     else:
                         QMessageBox.warning(None, "Warning", u"レイヤのタイプが違います")
                         self.resetPoints()
-
                         return
 
+                    feature = self.getFeatureById(layer, self.featid)
                     self.createFeature(geomB, feature)
                     self.editFeature(geomA, feature, False)
                     layer.select(feature.id())
                     self.resetPoints()
-
-    def moveHandle2(self, anchor_idx, point):
-        # アンカーの両側のハンドルを移動
-        handle_idx = anchor_idx * 2
-        p = self.b.getAnchor(anchor_idx)
-        pb = QgsPointXY(p[0] - (point[0] - p[0]), p[1] - (point[1] - p[1]))
-
-        self.b.moveHandle(handle_idx, pb)
-        self.b.moveHandle(handle_idx + 1, point)
-        self.m.moveHandleMarker(handle_idx, pb)
-        self.m.moveHandleMarker(handle_idx + 1, point)
 
     def canvasMoveEvent(self, event):
         layer = self.canvas.currentLayer()
@@ -248,8 +241,9 @@ class BezierEditingTool(QgsMapTool):
             self.moveFlag = True
             # 追加時のドラッグはハンドルの移動
             if self.mouse_state=="add_anchor":
-                self.moveHandle2(self.selected_idx, point[0])
-
+                handle_idx, pb = self.b.move_handle2(self.selected_idx, point[0])
+                self.m.moveHandleMarker(handle_idx, pb)
+                self.m.moveHandleMarker(handle_idx + 1, point[0])
             elif self.mouse_state == "insert_anchor":
                 pass
             elif self.alt and snaptype[1] and snaptype[2]:
@@ -266,10 +260,9 @@ class BezierEditingTool(QgsMapTool):
             elif self.mouse_state=="move_handle":
                 self.b.moveHandle(self.selected_idx, orgpoint)
                 self.m.moveHandleMarker(self.selected_idx, orgpoint)
-            # 選択されたポイントの移動
+            # 選択されたアンカーの移動
             elif self.mouse_state=="move_anchor":
                 pnt = point[0]
-                #ポイントとスナップしたら
                 if snaptype[1]:
                     pnt = point[1]
                 self.b.moveAnchor(self.selected_idx, pnt)
@@ -343,7 +336,6 @@ class BezierEditingTool(QgsMapTool):
             geom = QgsGeometry.fromPolygonXY([self.b.points])
         else:
             QMessageBox.warning(None, "Warning", u"レイヤのタイプが違います")
-            self.resetPoints()
             return
 
         if self.modify:
@@ -420,10 +412,10 @@ class BezierEditingTool(QgsMapTool):
     def createFeature(self, geom, feat=None):
         continueFlag = False
         layer = self.canvas.currentLayer()
-        provider = layer.dataProvider()
         self.check_crs()
         if self.layerCRS.srsid() != self.projectCRS.srsid():
             geom.transform(QgsCoordinateTransform(self.projectCRS, self.layerCRS, QgsProject.instance()))
+
         f = QgsFeature()
         fields = layer.fields()
         f.setFields(fields)
@@ -460,7 +452,9 @@ class BezierEditingTool(QgsMapTool):
         self.check_crs()
         if self.layerCRS.srsid() != self.projectCRS.srsid():
             geom.transform(QgsCoordinateTransform(self.projectCRS, self.layerCRS, QgsProject.instance()))
+
         layer.beginEditCommand("Feature edited")
+
         settings = QSettings()
         disable_attributes = settings.value("/qgis/digitizing/disable_enter_attribute_values_dialog", False, type=bool)
         if disable_attributes or showdlg is False:
@@ -504,39 +498,36 @@ class BezierEditingTool(QgsMapTool):
         if self.editing:
             # 「アンカーと近い」かどうか.
             for i, p in reversed(list(enumerate(self.b.anchor))):
-                snapped, snppoint = self.getSelfSnapPoint(p, point)
+                near = self.eachPointIsNear(p, point)
                 # freeの時にマウス位置がポイントかどうか調べたい場合
                 if self.selected_idx is None:
-                    if snapped:
+                    if near:
                         snaptype[1] = True
                         idx[1] = i
-                        pnt[1] = snppoint
-                        self.snap_mark.setCenter(snppoint)
+                        pnt[1] = p
+                        self.snap_mark.setCenter(p)
                         self.snap_mark.show()
                         break
                 # ドラッグしているポイントが他のポイントと近いかどうかを調べたい場合
                 elif self.selected_idx != i:
-                    if snapped:
+                    if near:
                         snaptype[1] = True
                         idx[1] = i
-                        pnt[1] = snppoint
+                        pnt[1] = p
                         break
             # 「ハンドルと近い」かどうか
             for i, p in reversed(list(enumerate(self.b.handle))):
-                snapped,snppoint = self.getSelfSnapPoint(p,point)
-                if snapped and self.show_handle and self.mode=="bezier":
+                near = self.eachPointIsNear(p,point)
+                if near and self.show_handle and self.mode=="bezier":
                     snaptype[2]=True
                     idx[2]=i
-                    pnt[2] = snppoint
-                    self.snap_mark.setCenter(snppoint)
+                    pnt[2] = p
+                    self.snap_mark.setCenter(p)
                     self.snap_mark.show()
                     break
             # 「線上かどうか for pen」
-            if self.m.bezier_rbl.numberOfVertices() > 0:
-                p=[]
-                for i in range(self.m.bezier_rbl.numberOfVertices()):
-                    p.append(self.m.bezier_rbl.getPoint(0,i))
-                geom = QgsGeometry.fromPolylineXY(p)
+            if self.b.anchorCount() > 2:
+                geom = self.b.asGeometry()
                 (dist, minDistPoint, afterVertex, leftOf) = geom.closestSegmentWithContext(point)
                 d = self.canvas.mapUnitsPerPixel() * 10
                 if math.sqrt(dist) < d:
@@ -544,13 +535,13 @@ class BezierEditingTool(QgsMapTool):
                     idx[3] = afterVertex
                     pnt[3] = minDistPoint
             # 「スタートポイントかどうか for pen」
-                p=self.m.bezier_rbl.getPoint(0, 0)
-                snapped, snppoint = self.getSelfSnapPoint(p, point)
-                if snapped:
+                start_anchor = self.b.getAnchor(0)
+                near = self.eachPointIsNear(start_anchor, point)
+                if near:
                     snaptype[4]=True
                     idx[4]=0
-                    pnt[4] = snppoint
-                    self.snap_mark.setCenter(snppoint)
+                    pnt[4] = start_anchor
+                    self.snap_mark.setCenter(start_anchor)
                     self.snap_mark.show()
         return orgpoint,snaptype,pnt,idx
 
@@ -581,11 +572,12 @@ class BezierEditingTool(QgsMapTool):
             return True,f[0]
 
     # 描画の開始ポイントとのスナップを調べる
-    def getSelfSnapPoint(self,p,point):
+    def eachPointIsNear(self,snap_point,point):
+        near = False
         d = self.canvas.mapUnitsPerPixel() * 4
-        if (p.x() - d <= point.x() <= p.x() + d) and (p.y() - d <= point.y() <= p.y() + d):
-            return True,p
-        return False,None
+        if (snap_point.x() - d <= point.x() <= snap_point.x() + d) and (snap_point.y() - d <= point.y() <= snap_point.y() + d):
+            near = True
+        return near
 
     # アンドゥ処理
     def undo(self):
