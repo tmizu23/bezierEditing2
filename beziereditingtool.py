@@ -42,7 +42,7 @@ class BezierEditingTool(QgsMapTool):
        #　変数と初期設定
         self.mode = "bezier"  # bezier, pen , split
         self.moveFlag = False  # クリックかドラッグかの判定（リリース時）
-        self.mouse_state = "free" # free, add_anchor,move_anchor,move_handle,insert_anchor,draw_newline,draw_updateline
+        self.mouse_state = "free" # free, add_anchor,move_anchor,move_handle,insert_anchor,draw_line
         self.editing = False #オブジェクト作成、修正中
         self.modify = False #オブジェクトの修正かどうか（すでに属性が入っている）
         self.snapping = None #スナップが設定されているかどうか
@@ -91,10 +91,10 @@ class BezierEditingTool(QgsMapTool):
             if event.button() == Qt.RightButton:
                 # 編集を確定する
                 if self.editing:
-                    self.finish_drawing(layer)
+                    self.finish_editing(layer)
                 # ベジエに変換する
                 else:
-                    self.start_modify(layer,orgpoint)
+                    self.start_editing(layer,orgpoint)
             # ベジエで左クリック
             elif event.button() == Qt.LeftButton:
                 # Ctrlを押しながら
@@ -188,38 +188,37 @@ class BezierEditingTool(QgsMapTool):
             # 右クリックで確定
             if event.button() == Qt.RightButton:
                 if self.editing:
-                    self.finish_drawing(layer)
+                    self.finish_editing(layer)
                 else:
                     if layer.geometryType() != QgsWkbTypes.LineGeometry:
                         QMessageBox.warning(None, "Warning", u"ライン以外はベジエに変換できません")
                         return
-                    self.start_modify(layer,orgpoint)
+                    self.start_editing(layer,orgpoint)
             # 左クリック
             elif event.button() == Qt.LeftButton:
-                if self.editing and snaptype[3]:
-                    #編集中で編集中のラバーバンドに近いなら
-                    self.editing = True
-                    self.mouse_state = "draw_updateline"
-                    self.pen_rbl.reset(QgsWkbTypes.LineGeometry)
-                    self.pen_rbl.addPoint(point[3])
-                elif not self.editing:
-                    #新規作成なら
+                # 新規作成
+                if not self.editing:
                     self.b = BezierGeometry()
                     self.m = BezierMarker(self.canvas, self.b)
+                    pnt = orgpoint
                     self.editing = True
-                    self.mouse_state = "draw_newline"
-                    self.m.bezier_rbl.reset(QgsWkbTypes.LineGeometry)  # ベイジライン
-                    self.m.bezier_rbl.addPoint(orgpoint)  # 最初のポイントは同じ点が2つ追加される仕様？
+                # 編集中でベジエ曲線に近いなら修正
+                elif self.editing and snaptype[3]:
+                    pnt = point[3]
+                self.mouse_state = "draw_line"
+                self.pen_rbl.reset(QgsWkbTypes.LineGeometry)
+                self.pen_rbl.addPoint(pnt)
+
         elif self.mode == "split":
             # 右クリックで確定
             if event.button() == Qt.RightButton:
                 if self.editing:
-                    self.finish_drawing(layer)
+                    self.finish_editing(layer)
                 else:
                     if layer.geometryType() != QgsWkbTypes.LineGeometry:
                         QMessageBox.warning(None, "Warning", u"ライン以外はベジエに変換できません")
                         return
-                    self.start_modify(layer,orgpoint)
+                    self.start_editing(layer,orgpoint)
             # 左クリック
             elif event.button() == Qt.LeftButton:
                 # 編集中で編集中のラバーバンドに近いなら
@@ -300,13 +299,11 @@ class BezierEditingTool(QgsMapTool):
                     self.canvas.setCursor(self.addanchor_cursor)
         elif self.mode == "pen":
             self.canvas.setCursor(self.drawline_cursor)
-            pnt = orgpoint
-            # スタートポイントとスナップしてるなら
-            if snaptype[4]:
-                pnt = point[4]
-            if self.mouse_state == "draw_newline":
-                self.m.bezier_rbl.addPoint(pnt)
-            elif self.mouse_state == "draw_updateline":
+            if self.mouse_state == "draw_line":
+                pnt = orgpoint
+                # スタートポイントとスナップしてるなら
+                if snaptype[4]:
+                    pnt = point[4]
                 self.pen_rbl.addPoint(pnt)
         elif self.mode == "split":
             self.canvas.setCursor(self.split_cursor)
@@ -323,10 +320,7 @@ class BezierEditingTool(QgsMapTool):
         elif self.mode == "pen":
             # ドロー終了
             if self.mouse_state != "free":
-                if self.mouse_state == "draw_updateline":
-                    self.draw_updateline(snaptype)
-                elif self.mouse_state == "draw_newline":
-                    self.draw_newline(snaptype)
+                self.updateLine(snaptype)
                 self.mouse_state = "free"
         elif self.mode == "split":
             self.selected_point_idx = None
@@ -337,7 +331,7 @@ class BezierEditingTool(QgsMapTool):
             
     ####### イベント処理からの呼び出し
     # ベジエ関係
-    def start_modify(self,layer,orgpoint):
+    def start_editing(self,layer,orgpoint):
         # 編集開始
         near, f = self.getNearFeature(layer, orgpoint)
         if near:
@@ -348,7 +342,7 @@ class BezierEditingTool(QgsMapTool):
                 self.editing = True
                 self.modify = True
 
-    def finish_drawing(self,layer):
+    def finish_editing(self,layer):
         num_anchor = self.b.anchorCount()
         #self.log("{}".format(num_anchor))
         # 作成するオブジェクトをgeomに変換。修正するためのフィーチャーも取得
@@ -391,85 +385,6 @@ class BezierEditingTool(QgsMapTool):
 
         self.canvas.refresh()
 
-    # ジオメトリのペンでの修正
-    def modify_bezier(self, update_geom, org_geom):
-        update_line = update_geom.asPolyline()
-        org_line = org_geom.asPolyline()
-
-        startpnt = update_line[0]
-        lastpnt = update_line[-1]
-        startpnt_is_near, start_anchoridx, start_vertexidx = self.closestAnchorOfGeometry(startpnt, org_geom)
-        lastpnt_is_near, last_anchoridx, last_vertexidx = self.closestAnchorOfGeometry(lastpnt, org_geom)
-        # self.log("{},{}".format(len(points),len(org_line)))
-        # org_lineとupdate_lineの交差する周辺のベクトルの内積を計算。正なら順方向、不なら逆方向
-        v1 = np.array(org_line[start_vertexidx]) - np.array(org_line[start_vertexidx - 1])
-        v2 = np.array(update_line[1]) - np.array(update_line[0])
-        direction = np.dot(v1, v2)
-        self.history.append({"state": "start_pen"})
-        # 逆方向ならorg_lineとベジエを定義しているのアンカー、ハンドル関連のリストを逆順にする
-        if direction < 0:
-            org_line.reverse()
-            reversed_geom = QgsGeometry.fromPolylineXY(org_line)
-            startpnt_is_near, start_anchoridx, start_vertexidx = self.closestAnchorOfGeometry(startpnt, reversed_geom)
-            lastpnt_is_near, last_anchoridx, last_vertexidx = self.closestAnchorOfGeometry(lastpnt, reversed_geom)
-            self.b.flipBezierLine()
-        # 編集箇所の前のハンドルから今のところまでをくっつける
-        # ベジエ区間ごとのポイントリスト　を作成
-        point_list = self.b.pointList(org_line)
-        # A 部分の修正. startpnt_is_nearは修正開始の時点で確定している.
-        if lastpnt_is_near and last_vertexidx > start_vertexidx and last_anchoridx <= len(point_list):
-            polyline = point_list[start_anchoridx - 1][0:self.b.pointListIdx(start_vertexidx)] + \
-                       update_line + \
-                       point_list[last_anchoridx - 1][self.b.pointListIdx(last_vertexidx):]
-            geom = self.convertLineToSimpleGeom(polyline)
-
-            for i in range(start_anchoridx, last_anchoridx):
-                self.history.append(
-                    {"state": "delete_anchor",
-                     "pointidx": start_anchoridx,
-                     "point": self.b.getAnchor(start_anchoridx),
-                     "ctrlpoint0": self.b.getHandle(start_anchoridx * 2),
-                     "ctrlpoint1": self.b.getHandle(start_anchoridx * 2 + 1)
-                     }
-                )
-                self.b.deleteAnchor(start_anchoridx)
-
-            pointnum, cp_first, cp_last = self.b.insertGeomToBezier(start_anchoridx, geom, last=False)
-            self.history.append({"state": "insert_geom", "pointidx": start_anchoridx, "pointnum": pointnum, "cp_first": cp_first, "cp_last": cp_last})
-
-            self.m.showBezierLineMarkers()
-            # self.history.append({"state": "end_pen"})
-        # B 終点が離れる場合。終点が線上でも逆方向に戻っている場合、始点に閉じる場合、最終点に近い場合。
-        elif not lastpnt_is_near or (lastpnt_is_near and last_vertexidx <= start_vertexidx) or last_anchoridx > len(
-                point_list):
-            if start_anchoridx == self.b.anchorCount():  # 右端の場合はそのまま。
-                polyline = update_line
-            else:  # ベジエ区間の中の何個目のポイントからか調べて、くっつける
-                polyline = point_list[start_anchoridx - 1][0:self.b.pointListIdx(start_vertexidx)] + update_line
-            geom = self.convertLineToSimpleGeom(polyline)
-
-            for i in range(start_anchoridx, self.b.anchorCount()):
-                self.history.append(
-                    {"state": "delete_anchor",
-                     "pointidx": start_anchoridx,
-                     "point": self.b.getAnchor(start_anchoridx),
-                     "ctrlpoint0": self.b.getHandle(start_anchoridx * 2),
-                     "ctrlpoint1": self.b.getHandle(start_anchoridx * 2 + 1)
-                     }
-                )
-                self.b.deleteAnchor(start_anchoridx)
-
-            pointnum, cp_first,_ = self.b.insertGeomToBezier(start_anchoridx, geom, last=True)
-            self.history.append(
-                {"state": "insert_geom", "pointidx": start_anchoridx, "pointnum": pointnum, "cp_first": cp_first,
-                 "cp_last": None})
-            self.m.showBezierLineMarkers()
-        self.history.append({"state": "end_pen", "direction": "forward"})
-        # ベジエの方向を元に戻す
-        if direction < 0:
-            self.b.flipBezierLine()
-            self.history[-1]["direction"] = "reverse"
-
     def updateHandle(self, point):
         # ハンドルを更新
         p = self.b.getAnchor(self.selected_point_idx)
@@ -481,40 +396,19 @@ class BezierEditingTool(QgsMapTool):
         self.m.moveHandleMarker(idx + 1, point)
 
     # ペン関係
-    def draw_newline(self,snaptype):
-        # スムーズ処理してrbを付け替える
-        if self.m.bezier_rbl.numberOfVertices() <= 2: #クリックいた場合は無視
-            self.m.bezier_rbl.reset(QgsWkbTypes.LineGeometry)
-            self.editing = False
-            return
-        rbgeom = self.m.bezier_rbl.asGeometry()
-        rbline = rbgeom.asPolyline()
-        geom = self.convertLineToSimpleGeom(rbline)
-        self.history.append({"state": "start_pen"})
-        pointnum,_,_ = self.b.insertGeomToBezier(0,geom,last=True)
-        self.history.append(
-            {"state": "insert_geom", "pointidx": 0, "pointnum": pointnum, "cp_first": None,
-             "cp_last": None})
-        self.history.append({"state": "end_pen","direction":"forward"})
-        # スタートポイントにスナップしていたらスムーズ処理でずれた最後の点を最初のポイントに動かす
-        if snaptype[4]:
-            self.b.moveAnchor(self.b.anchorCount() - 1, self.b.getAnchor(0))
-        self.m.showBezierLineMarkers()
-
-    def draw_updateline(self,snaptype):
+    def updateLine(self,snaptype):
         if self.pen_rbl.numberOfVertices() <= 2:
             self.pen_rbl.reset(QgsWkbTypes.LineGeometry)
             return
-        org_geom = self.m.bezier_rbl.asGeometry()
         update_geom = self.pen_rbl.asGeometry()
-        self.modify_bezier(update_geom, org_geom)  # 編集箇所の次のハンドル以降を削除
+        d = self.canvas.mapUnitsPerPixel() * 10
+        self.b.modifyBezierByGeometry(update_geom,d)  # 編集箇所の次のハンドル以降を削除
         # スタートポイントにスナップしていたらスムーズ処理でずれた最後の点を最初のポイントに動かす
         if snaptype[4]:
             self.b.moveAnchor(self.b.anchorCount() - 1, self.b.getAnchor(0))
-            self.m.moveAnchorMarker(self.b.anchorCount() - 1, self.b.getAnchor(0))
         self.pen_rbl.reset()
+        self.m.showBezierLineMarkers()
         
- 
     # アンドゥ処理
     def undo(self):
         if len(self.history)>0:
@@ -605,33 +499,6 @@ class BezierEditingTool(QgsMapTool):
             return False
 
 
-
-    ########ジオメトリ、フィーチャー　ツール
-    # ポイントに近いジオメトリ上のポイントを返す
-    def closestPointOfGeometry(self,point,geom):
-        #フィーチャとの距離が近いかどうかを確認
-        near = False
-        (dist, minDistPoint, afterVertex,leftOf)=geom.closestSegmentWithContext(point)
-        d = self.canvas.mapUnitsPerPixel() * 10
-        if math.sqrt(dist) < d:
-            near = True
-        return near,minDistPoint,afterVertex
-    # 描画の開始ポイントとのスナップを調べる
-    def getSelfSnapPoint(self,p,point):
-        d = self.canvas.mapUnitsPerPixel() * 4
-        if (p.x() - d <= point.x() <= p.x() + d) and (p.y() - d <= point.y() <= p.y() + d):
-            return True,p
-        return False,None
-    # ポインタの次のアンカーのidとvertexのidを返す。アンカーとスナップしている場合は、次のIDを返す。右端のアンカーの処理は注意
-    def closestAnchorOfGeometry(self,point,geom):
-        near = False
-        (dist, minDistPoint, vertexidx, leftOf) = geom.closestSegmentWithContext(point)
-        anchoridx = self.b.AnchorIdx(vertexidx)
-        d = self.canvas.mapUnitsPerPixel() * 10
-        if math.sqrt(dist) < d:
-            near = True
-        return near, anchoridx, vertexidx
-
     def createFeature(self, geom, feat=None):
         continueFlag = False
         layer = self.canvas.currentLayer()
@@ -692,6 +559,7 @@ class BezierEditingTool(QgsMapTool):
                 if reply == QMessageBox.Yes:
                     continueFlag = True
         return continueFlag
+
     # フィーチャーIDからフィーチャを返す
     def getFeatureById(self,layer,featid):
         features = [f for f in layer.getFeatures(QgsFeatureRequest().setFilterFids([featid]))]
@@ -699,6 +567,7 @@ class BezierEditingTool(QgsMapTool):
             return None
         else:
             return features[0]
+
     # ポイントから近いフィーチャを返す
     def getNearFeature(self, layer, point):
         d = self.canvas.mapUnitsPerPixel() * 4
@@ -716,6 +585,7 @@ class BezierEditingTool(QgsMapTool):
             return False,None
         else:
             return True,f[0]
+
     # マウスがベジエのハンドルのどこにスナップしたか確認
     def getSnapPoint(self,event,layer):
         # どこにスナップしたか？のリスト、スナップしたポイント、線上にスナップした場合のポイントのidを返す
@@ -792,35 +662,16 @@ class BezierEditingTool(QgsMapTool):
                     self.snap_mark.show()
         return orgpoint,snaptype,pnt,idx
 
+
+    # 描画の開始ポイントとのスナップを調べる
+    def getSelfSnapPoint(self,p,point):
+        d = self.canvas.mapUnitsPerPixel() * 4
+        if (p.x() - d <= point.x() <= p.x() + d) and (p.y() - d <= point.y() <= p.y() + d):
+            return True,p
+        return False,None
+
     ########ツール（基礎的な関数）
-    #移動平均でスムージング
-    def smoothing(self,polyline):
-        poly=np.reshape(polyline,(-1,2)).T
-        num = 8
-        b = np.ones(num) / float(num)
-        x_pad = np.pad(poly[0], (num-1, 0), 'edge')
-        y_pad = np.pad(poly[1], (num-1, 0), 'edge')
-        x_smooth = np.convolve(x_pad, b, mode='valid')
-        y_smooth = np.convolve(y_pad, b, mode='valid')
-        poly_smooth = [QgsPointXY(x, y) for x,y in zip(x_smooth,y_smooth)]
-        return poly_smooth
-    #ポイント間の距離
-    def distance(self,p1, p2):
-        dx = p1[0] - p2[0]
-        dy = p1[1] - p2[1]
-        return math.sqrt(dx * dx + dy * dy)
 
-    def convertLineToSimpleGeom(self,polyline):
-        polyline = self.smoothing(polyline)
-        geom = QgsGeometry.fromPolylineXY(polyline)
-        #simplifyするとベジエ化でおかしくなる場合がある。端の点が移動するため？
-
-        # d = self.canvas.mapUnitsPerPixel()
-        # geom = geom.simplify(self.tolerance * d)
-        # self.test2_rbl.reset(QgsWkbTypes.LineGeometry)
-        # for point in geom.asPolyline():
-        #     self.test2_rbl.addPoint(point)
-        return geom
 
     def showHandle(self,checked):
         self.show_handle = checked

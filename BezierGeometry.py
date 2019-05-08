@@ -199,7 +199,7 @@ class BezierGeometry:
         self.moveHandle((anchor_idx - 1) * 2 + 4, c2b)
 
     # ラインのジオメトリをベジエ曲線に挿入
-    def insertGeomToBezier(self, offset, geom, last=True):
+    def addGeometryToBezier(self, geom, offset, last=True):
         polyline = geom.asPolyline()
         points = np.array(polyline)
         beziers = fitCurve(points, 10.0)
@@ -240,6 +240,96 @@ class BezierGeometry:
                 self.moveHandle(idx + 1, c2)
 
         return pointnum, cp_first, cp_last
+
+    # ジオメトリのペンでの修正
+    def modifyBezierByGeometry(self, update_geom, d):
+        #bezier_geom = self.m.bezier_rbl.asGeometry()
+        #bezier_line = bezier_geom.asPolyline()
+        bezier_line = self.points
+        update_line = update_geom.asPolyline()
+        bezier_geom = QgsGeometry.fromPolylineXY(bezier_line)
+
+        #新規ベジエの場合
+        if len(bezier_line) == 0:
+            geom = self._smoothingGeometry(update_line)
+            pointnum, _, _ = self.addGeometryToBezier(geom, 0, last=True)
+
+        #修正の場合
+        else:
+            startpnt = update_line[0]
+            lastpnt = update_line[-1]
+            startpnt_is_near, start_anchoridx, start_vertexidx = self._closestAnchorOfGeometry(startpnt, bezier_geom, d)
+            lastpnt_is_near, last_anchoridx, last_vertexidx = self._closestAnchorOfGeometry(lastpnt, bezier_geom, d)
+
+            # bezier_lineとupdate_lineの交差する周辺のベクトルの内積を計算。正なら順方向、不なら逆方向
+            v1 = np.array(bezier_line[start_vertexidx]) - np.array(bezier_line[start_vertexidx - 1])
+            v2 = np.array(update_line[1]) - np.array(update_line[0])
+            direction = np.dot(v1, v2)
+
+            #self.history.append({"state": "start_pen"})
+            # 逆方向ならbezier_lineとベジエを定義しているのアンカー、ハンドル関連のリストを逆順にする
+            if direction < 0:
+                #bezier_line.reverse()
+                self.flipBezierLine()
+                reversed_geom = QgsGeometry.fromPolylineXY(bezier_line)
+                startpnt_is_near, start_anchoridx, start_vertexidx = self._closestAnchorOfGeometry(startpnt, reversed_geom, d)
+                lastpnt_is_near, last_anchoridx, last_vertexidx = self._closestAnchorOfGeometry(lastpnt, reversed_geom, d)
+
+
+            # 編集箇所の前のハンドルから今のところまでをくっつける
+            # ベジエ区間ごとのポイントリスト　を作成
+            point_list = self.pointList(bezier_line)
+            # A 部分の修正. startpnt_is_nearは修正開始の時点で確定している.
+            if lastpnt_is_near and last_vertexidx > start_vertexidx and last_anchoridx <= len(point_list):
+                polyline = point_list[start_anchoridx - 1][0:self.pointListIdx(start_vertexidx)] + \
+                           update_line + \
+                           point_list[last_anchoridx - 1][self.pointListIdx(last_vertexidx):]
+                geom = self._smoothingGeometry(polyline)
+
+                for i in range(start_anchoridx, last_anchoridx):
+                    # self.history.append(
+                    #     {"state": "delete_anchor",
+                    #      "pointidx": start_anchoridx,
+                    #      "point": self.b.getAnchor(start_anchoridx),
+                    #      "ctrlpoint0": self.b.getHandle(start_anchoridx * 2),
+                    #      "ctrlpoint1": self.b.getHandle(start_anchoridx * 2 + 1)
+                    #      }
+                    # )
+                    self.deleteAnchor(start_anchoridx)
+
+                pointnum, cp_first, cp_last = self.addGeometryToBezier(geom, start_anchoridx, last=False)
+                #self.history.append({"state": "insert_geom", "pointidx": start_anchoridx, "pointnum": pointnum, "cp_first": cp_first, "cp_last": cp_last})
+
+            # B 終点が離れる場合。終点が線上でも逆方向に戻っている場合、始点に閉じる場合、最終点に近い場合。
+            elif not lastpnt_is_near or (lastpnt_is_near and last_vertexidx <= start_vertexidx) or last_anchoridx > len(
+                    point_list):
+                if start_anchoridx == self.anchorCount():  # 右端の場合はそのまま。
+                    polyline = update_line
+                else:  # ベジエ区間の中の何個目のポイントからか調べて、くっつける
+                    polyline = point_list[start_anchoridx - 1][0:self.pointListIdx(start_vertexidx)] + update_line
+                geom = self._smoothingGeometry(polyline)
+
+                for i in range(start_anchoridx, self.anchorCount()):
+                    # self.history.append(
+                    #     {"state": "delete_anchor",
+                    #      "pointidx": start_anchoridx,
+                    #      "point": self.b.getAnchor(start_anchoridx),
+                    #      "ctrlpoint0": self.b.getHandle(start_anchoridx * 2),
+                    #      "ctrlpoint1": self.b.getHandle(start_anchoridx * 2 + 1)
+                    #      }
+                    #)
+                    self.deleteAnchor(start_anchoridx)
+
+                pointnum, cp_first,_ = self.addGeometryToBezier(geom, start_anchoridx, last=True)
+                # self.history.append(
+                #     {"state": "insert_geom", "pointidx": start_anchoridx, "pointnum": pointnum, "cp_first": cp_first,
+                #      "cp_last": None})
+            # self.history.append({"state": "end_pen", "direction": "forward"})
+            # ベジエの方向を元に戻す
+            if direction < 0:
+                self.flipBezierLine()
+                # self.history[-1]["direction"] = "reverse"
+
 
     # ベジエ曲線をpointの位置で二つのラインに分割したラインを返す
     def splitLine(self, point_idx, point):
@@ -335,6 +425,40 @@ class BezierGeometry:
 
     def _delHandle(self, idx):
         del self.handle[idx]
+
+    # ポインタの次のアンカーのidとvertexのidを返す。アンカーとスナップしている場合は、次のIDを返す。右端のアンカーの処理は注意
+    def _closestAnchorOfGeometry(self,point,geom,d):
+        near = False
+        (dist, minDistPoint, vertexidx, leftOf) = geom.closestSegmentWithContext(point)
+        anchoridx = self.AnchorIdx(vertexidx)
+        #d = self.canvas.mapUnitsPerPixel() * 10
+        if math.sqrt(dist) < d:
+            near = True
+        return near, anchoridx, vertexidx
+
+    #移動平均でスムージング
+    def _smoothing(self,polyline):
+        poly=np.reshape(polyline,(-1,2)).T
+        num = 8
+        b = np.ones(num) / float(num)
+        x_pad = np.pad(poly[0], (num-1, 0), 'edge')
+        y_pad = np.pad(poly[1], (num-1, 0), 'edge')
+        x_smooth = np.convolve(x_pad, b, mode='valid')
+        y_smooth = np.convolve(y_pad, b, mode='valid')
+        poly_smooth = [QgsPointXY(x, y) for x,y in zip(x_smooth,y_smooth)]
+        return poly_smooth
+
+    def _smoothingGeometry(self,polyline):
+        polyline = self._smoothing(polyline)
+        geom = QgsGeometry.fromPolylineXY(polyline)
+        #simplifyするとベジエ化でおかしくなる場合がある。端の点が移動するため？
+
+        # d = self.canvas.mapUnitsPerPixel()
+        # geom = geom.simplify(self.tolerance * d)
+        # self.test2_rbl.reset(QgsWkbTypes.LineGeometry)
+        # for point in geom.asPolyline():
+        #     self.test2_rbl.addPoint(point)
+        return geom
 
     def log(self, msg):
         QgsMessageLog.logMessage(msg, 'MyPlugin', Qgis.Info)
