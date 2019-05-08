@@ -16,7 +16,7 @@ class BezierMarker:
         self.bezier_rbl = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
         self.bezier_rbl.setColor(QColor(255, 0, 0,150))
         self.bezier_rbl.setWidth(2)
-            
+
     # ベジエ曲線とすべてのマーカーを削除する
     def removeBezierLineMarkers(self):
         self._removeAllMarker(self.anchor_marks)  # アンカーマーカーの削除
