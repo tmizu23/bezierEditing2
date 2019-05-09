@@ -454,7 +454,6 @@ class BezierEditingTool(QgsMapTool):
                         continueFlag = True
         return f, continueFlag
 
-
     def checkSnapToPoint(self,point,layer):
         snapped = False
         snap_point = self.toMapCoordinates(point)
@@ -462,13 +461,9 @@ class BezierEditingTool(QgsMapTool):
             snapper = self.canvas.snappingUtils()
             snapMatch = snapper.snapToMap(point)
             if snapMatch.hasVertex():
-                snppoint = snapMatch.point()
-                #ここのpointはQgsPointになっているので、layerが必要
-                snap_point = self.toMapCoordinates(layer,snppoint)
+                snap_point = snapMatch.point()
                 snapped = True
         return snapped, snap_point
-
-
 
     # マウスがベジエのハンドルのどこにスナップしたか確認
     def getSnapPoint(self,event,layer):
@@ -544,7 +539,6 @@ class BezierEditingTool(QgsMapTool):
             self.snapping = True
         else:
             self.snapping = False
-        QgsMessageLog.logMessage("snapping:{}".format(self.snapping), 'MyPlugin')
 
     def check_crs(self):
         self.layerCRS = self.canvas.currentLayer().crs()
