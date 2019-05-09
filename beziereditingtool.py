@@ -222,9 +222,9 @@ class BezierEditingTool(QgsMapTool):
                         return
 
                     feature = self.getFeatureById(layer, self.editing_feature_id)
-                    self.createFeature(geomB, feature, editmode=False,showdlg=False)
-                    self.createFeature(geomA, feature, editmode=True,showdlg=False)
-                    layer.select(feature.id())
+                    _,_ = self.createFeature(geomB, feature, editmode=False,showdlg=False)
+                    f,_ = self.createFeature(geomA, feature, editmode=True,showdlg=False)
+                    layer.select(f.id())
                     self.resetPoints()
 
     def canvasMoveEvent(self, event):
@@ -333,9 +333,9 @@ class BezierEditingTool(QgsMapTool):
                 QMessageBox.warning(None, "Warning", u"レイヤを確かめてください")
                 self.resetPoints()
                 return
-            continueFlag = self.createFeature(geom, feature, editmode=True)
+            f,continueFlag = self.createFeature(geom, feature, editmode=True)
         else:
-            continueFlag = self.createFeature(geom, None, editmode=False)
+            f,continueFlag = self.createFeature(geom, None, editmode=False)
 
         if continueFlag is False:
             self.resetPoints()
@@ -404,54 +404,45 @@ class BezierEditingTool(QgsMapTool):
         if self.layerCRS.srsid() != self.projectCRS.srsid():
             geom.transform(QgsCoordinateTransform(self.projectCRS, self.layerCRS, QgsProject.instance()))
 
-        if not editmode:
-            f = QgsFeature()
-            fields = layer.fields()
-            f.setFields(fields)
-            f.setGeometry(geom)
-            # add attribute fields to feature
+        f = QgsFeature()
+        fields = layer.fields()
+        f.setFields(fields)
+        f.setGeometry(geom)
+        # add attribute fields to feature
 
-            if feat is not None:
-                for i in range(fields.count()):
-                    f.setAttribute(i, feat.attributes()[i])
-        else:
-            f = feat
+        if feat is not None:
+            for i in range(fields.count()):
+                f.setAttribute(i, feat.attributes()[i])
 
         settings = QSettings()
         disable_attributes = settings.value("/qgis/digitizing/disable_enter_attribute_values_dialog", False, type=bool)
         if disable_attributes or showdlg is False:
             if not editmode:
-                layer.beginEditCommand("Feature added")
+                layer.beginEditCommand("Bezier added")
                 layer.addFeature(f)
             else:
-                layer.beginEditCommand("Feature edited")
-                layer.changeGeometry(f.id(), geom)
+                #changeGeometryが上手く動かないため追加して、削除
+                layer.beginEditCommand("Bezier edited")
+                layer.addFeature(f)
+                layer.deleteFeature(feat.id())
             layer.endEditCommand()
         else:
-
-            if not editmode:
-                layer.beginEditCommand("Feature added")
-                dlg = QgsAttributeDialog(layer, f, True)
-                dlg.setAttribute(QtCore.Qt.WA_DeleteOnClose)
-                dlg.setMode(QgsAttributeEditorContext.AddFeatureMode)
-            else:
-                layer.beginEditCommand("Feature edited")
-                dlg = QgsAttributeDialog(layer, f, True)
-
-            ret = dlg.exec()
+            dlg = QgsAttributeDialog(layer, f, True)
+            dlg.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+            dlg.setMode(QgsAttributeEditorContext.AddFeatureMode)
+            dlg.setEditCommandMessage("Bezier added")
+            ret = dlg.exec_()
             if ret:
                 if editmode:
-                    layer.changeGeometry(f.id(), geom)
-                layer.endEditCommand()
+                    layer.beginEditCommand("Bezier deleted")
+                    layer.deleteFeature(feat.id())
+                    layer.endEditCommand()
             else:
                 reply = QMessageBox.question(None, "Question", u"編集を続けますか？", QMessageBox.Yes,
                                              QMessageBox.No)
                 if reply == QMessageBox.Yes:
                     continueFlag = True
-
-                layer.destroyEditCommand()
-
-        return continueFlag
+        return f, continueFlag
 
 
     def checkSnapToPoint(self,point,layer):
