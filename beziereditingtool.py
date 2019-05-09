@@ -428,21 +428,30 @@ class BezierEditingTool(QgsMapTool):
                 layer.deleteFeature(feat.id())
             layer.endEditCommand()
         else:
-            dlg = QgsAttributeDialog(layer, f, True)
-            dlg.setAttribute(QtCore.Qt.WA_DeleteOnClose)
-            dlg.setMode(QgsAttributeEditorContext.AddFeatureMode)
-            dlg.setEditCommandMessage("Bezier added")
-            ret = dlg.exec_()
-            if ret:
-                if editmode:
-                    layer.beginEditCommand("Bezier deleted")
-                    layer.deleteFeature(feat.id())
-                    layer.endEditCommand()
+            if not editmode:
+                dlg = QgsAttributeDialog(layer, f, True)
+                dlg.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+                dlg.setMode(QgsAttributeEditorContext.AddFeatureMode)
+                dlg.setEditCommandMessage("Bezier added")
+                ok = dlg.exec_()
+                if not ok:
+                    reply = QMessageBox.question(None, "Question", u"編集を続けますか？", QMessageBox.Yes,
+                                                 QMessageBox.No)
+                    if reply == QMessageBox.Yes:
+                        continueFlag = True
             else:
-                reply = QMessageBox.question(None, "Question", u"編集を続けますか？", QMessageBox.Yes,
-                                             QMessageBox.No)
-                if reply == QMessageBox.Yes:
-                    continueFlag = True
+                layer.beginEditCommand("Bezier edited")
+                dlg = self.iface.getFeatureForm(layer, feat)
+                ok = dlg.exec_()
+                if ok:
+                    layer.changeGeometry(feat.id(), geom)
+                    layer.endEditCommand()
+                else:
+                    layer.destroyEditCommand()
+                    reply = QMessageBox.question(None, "Question", u"編集を続けますか？", QMessageBox.Yes,
+                                                 QMessageBox.No)
+                    if reply == QMessageBox.Yes:
+                        continueFlag = True
         return f, continueFlag
 
 
