@@ -279,6 +279,71 @@ class BezierGeometry:
             points = self._bezier(p1, c1, p2, c2)
             self.points[self._pointsIdx(idxP):self._pointsIdx(idxP + 1) + 1] = points
 
+    def checkSnapToAnchor(self, point, selected_idx, d):
+        snapped = False
+        snap_point = None
+        snap_idx = None
+        # 「アンカーと近い」かどうか.
+        for i, p in reversed(list(enumerate(self.anchor))):
+            near = self._eachPointIsNear(p, point,d)
+            # freeの時にマウス位置がポイントかどうか調べたい場合
+            if selected_idx is None:
+                if near:
+                    snapped = True
+                    snap_idx = i
+                    snap_point = p
+                    break
+            # ドラッグしているポイントが他のポイントと近いかどうかを調べたい場合
+            elif selected_idx != i:
+                if near:
+                    snapped = True
+                    snap_idx = i
+                    snap_point = p
+                    break
+        return snapped, snap_point, snap_idx
+
+    def checkSnapToHandle(self,point,d):
+        snapped = False
+        snap_point = None
+        snap_idx = None
+        # 「ハンドルと近い」かどうか
+        for i, p in reversed(list(enumerate(self.handle))):
+            near = self._eachPointIsNear(p, point,d)
+            if near:
+                snapped = True
+                snap_idx = i
+                snap_point = p
+                break
+        return snapped, snap_point, snap_idx
+
+    def checkSnapToLine(self,point,d):
+        snapped = False
+        snap_point = None
+        snap_idx = None
+        # 「線上かどうか for pen」
+        if self.anchorCount() > 2:
+            geom = self.asGeometry()
+            (dist, minDistPoint, afterVertex, leftOf) = geom.closestSegmentWithContext(point)
+            if math.sqrt(dist) < d:
+                snapped = True
+                snap_idx = afterVertex
+                snap_point = minDistPoint
+        return snapped, snap_point, snap_idx
+
+    def checkSnapToStart(self,point,d):
+        snapped = False
+        snap_point = None
+        snap_idx = None
+        # 「スタートポイントかどうか for pen」
+        if self.anchorCount() > 2:
+            start_anchor = self.getAnchor(0)
+            near = self._eachPointIsNear(start_anchor, point,d)
+            if near:
+                snapped = True
+                snap_idx = 0
+                snap_point = start_anchor
+        return snapped, snap_point, snap_idx
+
     # アンドゥ処理
     def undo(self):
         if len(self.history)>0:
@@ -321,6 +386,13 @@ class BezierGeometry:
                     self._flipBezierLine()
 
         return  len(self.history)
+
+    # 描画の開始ポイントとのスナップを調べる
+    def _eachPointIsNear(self,snap_point,point,d):
+        near = False
+        if (snap_point.x() - d <= point.x() <= snap_point.x() + d) and (snap_point.y() - d <= point.y() <= snap_point.y() + d):
+            near = True
+        return near
 
     # ポイントをベジエ曲線に挿入してハンドルを調整
     def _insertAnchorPointToBezier(self, point_idx, anchor_idx, point):

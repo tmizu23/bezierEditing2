@@ -458,84 +458,12 @@ class BezierEditingTool(QgsMapTool):
             snapMatch = snapper.snapToMap(point)
             if snapMatch.hasVertex():
                 snppoint = snapMatch.point()
-                self.snap_mark.setCenter(snppoint)
-                self.snap_mark.show()
                 #ここのpointはQgsPointになっているので、layerが必要
                 snap_point = self.toMapCoordinates(layer,snppoint)
                 snapped = True
         return snapped, snap_point
 
-    def checkSnapToAnchor(self, point):
-        snapped = False
-        snap_point = None
-        snap_idx = None
-        # 「アンカーと近い」かどうか.
-        for i, p in reversed(list(enumerate(self.b.anchor))):
-            near = self.eachPointIsNear(p, point)
-            # freeの時にマウス位置がポイントかどうか調べたい場合
-            if self.selected_idx is None:
-                if near:
-                    snapped = True
-                    snap_idx = i
-                    snap_point = p
-                    self.snap_mark.setCenter(p)
-                    self.snap_mark.show()
-                    break
-            # ドラッグしているポイントが他のポイントと近いかどうかを調べたい場合
-            elif self.selected_idx != i:
-                if near:
-                    snapped = True
-                    snap_idx = i
-                    snap_point = p
-                    break
-        return snapped, snap_point, snap_idx
 
-    def checkSnapToHandle(self,point):
-        snapped = False
-        snap_point = None
-        snap_idx = None
-        # 「ハンドルと近い」かどうか
-        for i, p in reversed(list(enumerate(self.b.handle))):
-            near = self.eachPointIsNear(p, point)
-            if near and self.show_handle and self.mode == "bezier":
-                snapped = True
-                snap_idx = i
-                snap_point = p
-                self.snap_mark.setCenter(p)
-                self.snap_mark.show()
-                break
-        return snapped, snap_point, snap_idx
-
-    def checkSnapToLine(self,point):
-        snapped = False
-        snap_point = None
-        snap_idx = None
-        # 「線上かどうか for pen」
-        if self.b.anchorCount() > 2:
-            geom = self.b.asGeometry()
-            (dist, minDistPoint, afterVertex, leftOf) = geom.closestSegmentWithContext(point)
-            d = self.canvas.mapUnitsPerPixel() * 10
-            if math.sqrt(dist) < d:
-                snapped = True
-                snap_idx = afterVertex
-                snap_point = minDistPoint
-        return snapped, snap_point, snap_idx
-
-    def checkSnapToStart(self,point):
-        snapped = False
-        snap_point = None
-        snap_idx = None
-        # 「スタートポイントかどうか for pen」
-        if self.b.anchorCount() > 2:
-            start_anchor = self.b.getAnchor(0)
-            near = self.eachPointIsNear(start_anchor, point)
-            if near:
-                snapped = True
-                snap_idx = 0
-                snap_point = start_anchor
-                self.snap_mark.setCenter(start_anchor)
-                self.snap_mark.show()
-        return snapped, snap_point, snap_idx
 
     # マウスがベジエのハンドルのどこにスナップしたか確認
     def getSnapPoint(self,event,layer):
@@ -550,10 +478,19 @@ class BezierEditingTool(QgsMapTool):
         snapped[0], snap_point[0] = self.checkSnapToPoint(event.pos(), layer)
         if self.editing:
             point = self.toMapCoordinates(event.pos())
-            snapped[1], snap_point[1], snap_idx[1] = self.checkSnapToAnchor(point)
-            snapped[2], snap_point[2], snap_idx[2] = self.checkSnapToHandle(point)
-            snapped[3], snap_point[3], snap_idx[3] = self.checkSnapToLine(point)
-            snapped[4], snap_point[4], snap_idx[4] = self.checkSnapToStart(point)
+            d = self.canvas.mapUnitsPerPixel() * 4
+            snapped[1], snap_point[1], snap_idx[1] = self.b.checkSnapToAnchor(point,self.selected_idx,d)
+            if self.show_handle and self.mode == "bezier":
+                snapped[2], snap_point[2], snap_idx[2] = self.b.checkSnapToHandle(point,d)
+            snapped[3], snap_point[3], snap_idx[3] = self.b.checkSnapToLine(point,d)
+            snapped[4], snap_point[4], snap_idx[4] = self.b.checkSnapToStart(point,d)
+
+        # スナップマーカーの表示. ラインへのスナップは表示しない
+        for i in [0,1,2,4]:
+            if snapped[i]:
+                self.snap_mark.setCenter(snap_point[i])
+                self.snap_mark.show()
+                break
 
         return mouse_point,snapped,snap_point,snap_idx
 
@@ -583,13 +520,7 @@ class BezierEditingTool(QgsMapTool):
         else:
             return True,f[0]
 
-    # 描画の開始ポイントとのスナップを調べる
-    def eachPointIsNear(self,snap_point,point):
-        near = False
-        d = self.canvas.mapUnitsPerPixel() * 4
-        if (snap_point.x() - d <= point.x() <= snap_point.x() + d) and (snap_point.y() - d <= point.y() <= snap_point.y() + d):
-            near = True
-        return near
+
 
     # アンドゥ処理
     def undo(self):
@@ -608,7 +539,7 @@ class BezierEditingTool(QgsMapTool):
             self.snapping = True
         else:
             self.snapping = False
-        #QgsMessageLog.logMessage("snapping:{}".format(self.snapping), 'MyPlugin')
+        QgsMessageLog.logMessage("snapping:{}".format(self.snapping), 'MyPlugin')
 
     def check_crs(self):
         self.layerCRS = self.canvas.currentLayer().crs()
