@@ -87,7 +87,11 @@ class BezierEditingTool(QgsMapTool):
             if event.button() == Qt.RightButton:
                 # 編集を確定する
                 if self.editing:
-                    self.finish_editing(layer)
+                    if snapped[4]:
+                        self.b.flip_line()
+                        self.m.showBezierLineMarkers(self.show_handle)
+                    else:
+                        self.finish_editing(layer)
                 # ベジエに変換する
                 else:
                     self.start_editing(layer,mouse_point)
@@ -421,7 +425,7 @@ class BezierEditingTool(QgsMapTool):
                 layer.addFeature(f)
             else:
                 layer.beginEditCommand("Feature edited")
-                layer.changeGeometry(feat.id(), geom)
+                layer.changeGeometry(f.id(), geom)
             layer.endEditCommand()
         else:
 
@@ -434,7 +438,7 @@ class BezierEditingTool(QgsMapTool):
                 layer.beginEditCommand("Feature edited")
                 dlg = QgsAttributeDialog(layer, f, True)
 
-            ret = dlg.exec_()
+            ret = dlg.exec()
             if ret:
                 if editmode:
                     layer.changeGeometry(f.id(), geom)
