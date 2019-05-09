@@ -224,6 +224,7 @@ class BezierEditingTool(QgsMapTool):
                     feature = self.getFeatureById(layer, self.editing_feature_id)
                     _,_ = self.createFeature(geomB, feature, editmode=False,showdlg=False)
                     f,_ = self.createFeature(geomA, feature, editmode=True,showdlg=False)
+                    layer.removeSelection()
                     layer.select(f.id())
                     self.resetPoints()
 
