@@ -26,6 +26,11 @@ class BezierEditingTool(QgsMapTool):
         self.snap_mark.setIconType(QgsVertexMarker.ICON_BOX)
         self.snap_mark.setIconSize(10)
 
+        # unsplitでの矩形選択
+        self.rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
+        self.rubberBand.setColor(QColor(255, 0, 0, 100))
+        self.rubberBand.setWidth(1)
+
         #　アイコン
         self.addanchor_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/anchor.svg'), 1, 1)
         self.insertanchor_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/anchor_add.svg'), 1, 1)
@@ -229,10 +234,14 @@ class BezierEditingTool(QgsMapTool):
         elif self.mode == "unsplit":
             # 右クリックで確定
             if event.button() == Qt.RightButton:
+                #結合処理
                 pass
             # 左クリック
             elif event.button() == Qt.LeftButton:
-                pass
+                #選択処理
+                self.endPoint = self.startPoint = mouse_point
+                self.isEmittingPoint = True
+                self.showRect(self.startPoint, self.endPoint)
 
     def canvasMoveEvent(self, event):
         layer = self.canvas.currentLayer()
@@ -287,6 +296,10 @@ class BezierEditingTool(QgsMapTool):
             self.canvas.setCursor(self.split_cursor)
         elif self.mode == "unsplit":
             self.canvas.setCursor(self.unsplit_cursor)
+            if not self.isEmittingPoint:
+                return
+            self.endPoint = mouse_point
+            self.showRect(self.startPoint, self.endPoint)
 
     def canvasReleaseEvent(self, event):
         layer = self.canvas.currentLayer()
@@ -305,8 +318,13 @@ class BezierEditingTool(QgsMapTool):
             self.selected_idx = None
             self.mouse_state = "free"
         elif self.mode == "unsplit":
-            self.selected_idx = None
-            self.mouse_state = "free"
+            self.isEmittingPoint = False
+            r = self.rectangle()
+            if r is not None:
+                self.reset_unsplit()
+                self.selectFeatures(mouse_point, r)
+            else:
+                self.selectFeatures(mouse_point)
 
         self.m.showHandle(self.show_handle)
 
@@ -314,11 +332,11 @@ class BezierEditingTool(QgsMapTool):
     # ベジエ関係
     def start_editing(self,layer,mouse_point):
         # 編集開始
-        near, f = self.getNearFeature(layer, mouse_point)
+        near, f = self.getNearFeatures(layer, mouse_point)
         if near:
-            ret = self.convertFeatureToBezier(f)
+            ret = self.convertFeatureToBezier(f[0])
             if ret:
-                self.editing_feature_id = f.id()
+                self.editing_feature_id = f[0].id()
                 self.editing = True
 
     def finish_editing(self,layer):
@@ -505,24 +523,24 @@ class BezierEditingTool(QgsMapTool):
         else:
             return features[0]
 
-    # ポイントから近いフィーチャを返す
-    def getNearFeature(self, layer, point):
-        d = self.canvas.mapUnitsPerPixel() * 4
-        rect = QgsRectangle((point.x() - d), (point.y() - d), (point.x() + d), (point.y() + d))
+    # ポイントまたは矩形から近いフィーチャを返す
+    def getNearFeatures(self, layer, point, rect=None):
+        if rect is None:
+            d = self.canvas.mapUnitsPerPixel() * 4
+            rect = QgsRectangle((point.x() - d), (point.y() - d), (point.x() + d), (point.y() + d))
         self.check_crs()
         if self.layerCRS.srsid() != self.projectCRS.srsid():
             rectGeom = QgsGeometry.fromRect(rect)
             rectGeom.transform(QgsCoordinateTransform(self.projectCRS, self.layerCRS, QgsProject.instance()))
             rect = rectGeom.boundingBox()
         request = QgsFeatureRequest()
-        request.setLimit(1)
+        #request.setLimit(1)
         request.setFilterRect(rect)
-        f = [feat for feat in layer.getFeatures(request)]  # only one because of setlimit(1)
-        if len(f)==0:
-            return False,None
+        f = [feat for feat in layer.getFeatures(request)]
+        if len(f) == 0:
+            return False, None
         else:
-            return True,f[0]
-
+            return True, f
 
 
     # アンドゥ処理
@@ -549,11 +567,77 @@ class BezierEditingTool(QgsMapTool):
         if self.projectCRS.projectionAcronym() == "longlat":
             QMessageBox.warning(None, "Warning", u"プロジェクトの投影法を緯度経度から変更してください")
 
+    # unsplit 関係
+    def selectFeatures(self,point,rect=None):
+        #layers = QgsMapLayerRegistry.instance().mapLayers().values()
+        layers = QgsProject.instance().layerTreeRoot().findLayers()
+        for layer in layers:
+            #self.log("{}".format(layer.name().encode('utf-8')))
+            if layer.layer().type() != QgsMapLayer.VectorLayer:
+                continue
+            near = self.selectNearFeature(layer.layer(), point, rect)
+            if near and rect is None:
+                break
+            elif not near:
+                layer.layer().removeSelection()
+
+    def showRect(self, startPoint, endPoint):
+        self.rubberBand.reset(QgsWkbTypes.PolygonGeometry)
+        if startPoint.x() == endPoint.x() or startPoint.y() == endPoint.y():
+            return
+
+        point1 = QgsPointXY(startPoint.x(), startPoint.y())
+        point2 = QgsPointXY(startPoint.x(), endPoint.y())
+        point3 = QgsPointXY(endPoint.x(), endPoint.y())
+        point4 = QgsPointXY(endPoint.x(), startPoint.y())
+
+        self.rubberBand.addPoint(point1, False)
+        self.rubberBand.addPoint(point2, False)
+        self.rubberBand.addPoint(point3, False)
+        self.rubberBand.addPoint(point4, True)  # true to update canvas
+        self.rubberBand.show()
+
+    def rectangle(self):
+        if self.startPoint is None or self.endPoint is None:
+            return None
+        elif self.startPoint.x() == self.endPoint.x() or self.startPoint.y() == self.endPoint.y():
+            return None
+
+        return QgsRectangle(self.startPoint, self.endPoint)
+
+    def selectNearFeature(self,layer,pnt,rect=None):
+        if rect is not None:
+            layer.removeSelection()
+        near, features = self.getNearFeatures(layer,pnt,rect)
+        if near:
+            fids = [f.id() for f in features]
+            if rect is not None:
+                layer.selectByIds(fids)
+            else:
+                for fid in fids:
+                    if self.IsSelected(layer,fid):
+                        layer.deselect(fid)
+                    else:
+                        layer.select(fid)
+        return near
+
+    def IsSelected(self,layer,fid):
+        for sid in layer.selectedFeatureIds():
+            if sid == fid:
+                return True
+        return False
+
+    def reset_unsplit(self):
+        self.startPoint = self.endPoint = None
+        self.isEmittingPoint = False
+        self.rubberBand.reset(QgsWkbTypes.PolygonGeometry)
+
     def activate(self):
         self.canvas.setCursor(self.addanchor_cursor)
         self.check_snapsetting()
         self.check_crs()
         self.snap_mark.hide()
+        self.reset_unsplit()
 
     def deactivate(self):
         pass
