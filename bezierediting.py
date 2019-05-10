@@ -48,6 +48,14 @@ class BezierEditing2(object):
         self.split.triggered.connect(self.spliting)
         self.toolbar.addAction(self.split)
 
+        # Create unsplit action
+        self.unsplit = QAction(QIcon(":/plugins/bezierEditing2/icon/unspliticon.svg"),"Bezier_Unsplit", self.iface.mainWindow())
+        self.unsplit.setObjectName("BezierEditing_unsplit")
+        self.unsplit.setEnabled(False)
+        self.unsplit.setCheckable(True)
+        self.unsplit.triggered.connect(self.unspliting)
+        self.toolbar.addAction(self.unsplit)
+
         # Create show anchor option
         self.show_handle = QAction(QIcon(":/plugins/bezierEditing2/icon/showhandleicon.svg"),"Bezier_Show Anchor", self.iface.mainWindow())
         self.show_handle.setObjectName("BezierEditing_show_handle")
@@ -83,6 +91,11 @@ class BezierEditing2(object):
         self.split.setChecked(True)
         self.beziertool.mode = "split"
 
+    def unspliting(self):
+        self.canvas.setMapTool(self.beziertool)
+        self.unsplit.setChecked(True)
+        self.beziertool.mode = "unsplit"
+
     def showhandle(self,checked):
         self.beziertool.showHandle(checked)
 
@@ -98,6 +111,7 @@ class BezierEditing2(object):
             self.bezier_edit.setEnabled(True)
             self.pen_edit.setEnabled(True)
             self.split.setEnabled(True)
+            self.unsplit.setEnabled(True)
             self.show_handle.setEnabled(True)
             self.undo.setEnabled(True)
 
@@ -115,6 +129,7 @@ class BezierEditing2(object):
             self.bezier_edit.setEnabled(False)
             self.pen_edit.setEnabled(False)
             self.split.setEnabled(False)
+            self.unsplit.setEnabled(False)
             self.show_handle.setEnabled(False)
             self.undo.setEnabled(False)
 
@@ -134,6 +149,7 @@ class BezierEditing2(object):
         self.bezier_edit.setChecked(False)
         self.pen_edit.setChecked(False)
         self.split.setChecked(False)
+        self.unsplit.setChecked(False)
 
         #self.active = False
 
@@ -141,6 +157,7 @@ class BezierEditing2(object):
         self.toolbar.removeAction(self.bezier_edit)
         self.toolbar.removeAction(self.pen_edit)
         self.toolbar.removeAction(self.split)
+        self.toolbar.removeAction(self.unsplit)
         self.toolbar.removeAction(self.show_handle)
         self.toolbar.removeAction(self.undo)
         del self.toolbar

@@ -35,9 +35,10 @@ class BezierEditingTool(QgsMapTool):
         self.deletehandle_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/handle_del.svg'), 1, 1)
         self.drawline_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/drawline.svg'), 1, 1)
         self.split_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/mCrossHair.svg'), -1, -1)
+        self.unsplit_cursor = QCursor(Qt.ArrowCursor)
 
        #　変数と初期設定
-        self.mode = "bezier"  # bezier, pen , split
+        self.mode = "bezier"  # bezier, pen , split, unsplit
         self.mouse_state = "free" # free, add_anchor,move_anchor,move_handle,insert_anchor,draw_line
         self.editing = False #オブジェクト作成、修正中
         self.snapping = None #スナップが設定されているかどうか
@@ -47,11 +48,8 @@ class BezierEditingTool(QgsMapTool):
         self.alt = False
         self.ctrl = False
         self.shift = False
-
         self.b = None #BezierGeometry #現時点では、1度に1つだけ
         self.m = None #BezierMarker
-        #self.tolerance = 1
-
 
     ####### キー、キャンパスイベント
     def keyPressEvent(self, event):
@@ -174,9 +172,12 @@ class BezierEditingTool(QgsMapTool):
                     pnt = mouse_point
                     self.b.add_anchor(0,pnt,undo=False)
                     self.editing = True
-                # 編集中でベジエ曲線に近いなら修正
-                elif self.editing and snapped[3]:
-                    pnt = snap_point[3]
+                # 編集中でベジエ曲線かアンカーに近いなら修正
+                elif self.editing and (snapped[1] or snapped[3]):
+                    if snapped[1]:
+                        pnt = snap_point[1]
+                    elif snapped[3]:
+                        pnt = snap_point[3]
                 else:
                     return
                 self.mouse_state = "draw_line"
@@ -225,6 +226,13 @@ class BezierEditingTool(QgsMapTool):
                         #self.resetPoints()
                 else:
                     QMessageBox.warning(None, "Warning", u"切断できるフィーチャーがありません")
+        elif self.mode == "unsplit":
+            # 右クリックで確定
+            if event.button() == Qt.RightButton:
+                pass
+            # 左クリック
+            elif event.button() == Qt.LeftButton:
+                pass
 
     def canvasMoveEvent(self, event):
         layer = self.canvas.currentLayer()
@@ -277,6 +285,8 @@ class BezierEditingTool(QgsMapTool):
                 self.pen_rbl.addPoint(pnt)
         elif self.mode == "split":
             self.canvas.setCursor(self.split_cursor)
+        elif self.mode == "unsplit":
+            self.canvas.setCursor(self.unsplit_cursor)
 
     def canvasReleaseEvent(self, event):
         layer = self.canvas.currentLayer()
@@ -292,6 +302,9 @@ class BezierEditingTool(QgsMapTool):
                 self.convert_draw_line(snapped[4])
                 self.mouse_state = "free"
         elif self.mode == "split":
+            self.selected_idx = None
+            self.mouse_state = "free"
+        elif self.mode == "unsplit":
             self.selected_idx = None
             self.mouse_state = "free"
 
@@ -337,9 +350,6 @@ class BezierEditingTool(QgsMapTool):
 
     # ペン関係
     def convert_draw_line(self,snap_to_start):
-        if self.pen_rbl.numberOfVertices() <= 2:
-            self.pen_rbl.reset(QgsWkbTypes.LineGeometry)
-            return
         geom = self.pen_rbl.asGeometry()
         d = self.canvas.mapUnitsPerPixel() * 10
         self.b.modified_by_geometry(geom, d, snap_to_start)  # 編集箇所の次のハンドル以降を削除

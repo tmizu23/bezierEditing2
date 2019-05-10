@@ -86,15 +86,16 @@ class BezierGeometry:
             self.history.append({"state": "move_anchor", "pointidx": idx, "point": point})
         self._moveAnchor(idx, point)
 
-    def delete_anchor(self, idx, point):
-        self.history.append(
-            {"state": "delete_anchor",
-             "pointidx": idx,
-             "point": point,
-             "ctrlpoint0": self.getHandle(idx * 2),
-             "ctrlpoint1": self.getHandle(idx * 2 + 1)
-             }
-        )
+    def delete_anchor(self, idx, point,undo=True):
+        if undo:
+            self.history.append(
+                {"state": "delete_anchor",
+                 "pointidx": idx,
+                 "point": point,
+                 "ctrlpoint0": self.getHandle(idx * 2),
+                 "ctrlpoint1": self.getHandle(idx * 2 + 1)
+                 }
+            )
         self._deleteAnchor(idx)
 
     def move_handle(self, idx, point, undo=True):
@@ -143,16 +144,31 @@ class BezierGeometry:
         update_line = update_geom.asPolyline()
         bezier_geom = QgsGeometry.fromPolylineXY(bezier_line)
 
-        if self.anchorCount() == 1:
-            #スナップのために作成した最初のアンカーを消す
-            self._deleteAnchor(0)
         #新規ベジエの場合
-        if len(bezier_line) == 0:
+        # 1点を新規で打つ場合
+        if self.anchorCount() == 1 and len(update_line) == 2:
+            self._deleteAnchor(0)
+            self.add_anchor(0, update_line[0])
+        # 1点もなくて、ラインを書く場合
+        elif self.anchorCount() == 1 and len(self.history)==0 and len(update_line) > 2:
+            self._deleteAnchor(0)
             self.history.append({"state": "start_pen"})
             geom = self._smoothingGeometry(update_line)
             pointnum, _, _ = self._addGeometryToBezier(geom, 0, last=True)
+            self.history.append(
+                {"state": "insert_geom", "pointidx": 0, "pointnum": pointnum, "cp_first": None,
+                 "cp_last": None})
             self.history.append({"state": "end_pen", "direction": "forward"})
-        #修正の場合
+        #1点あって、ラインで修正する場合
+        elif self.anchorCount() == 1 and len(self.history) > 0 and len(update_line) > 2:
+            self.history.append({"state": "start_pen"})
+            geom = self._smoothingGeometry(update_line)
+            pointnum, _, _ = self._addGeometryToBezier(geom, 1, last=True)
+            self.history.append(
+                {"state": "insert_geom", "pointidx": 1, "pointnum": pointnum, "cp_first": None,
+                 "cp_last": None})
+            self.history.append({"state": "end_pen", "direction": "forward"})
+        #ラインをラインで修正する場合
         else:
             startpnt = update_line[0]
             lastpnt = update_line[-1]
@@ -372,6 +388,7 @@ class BezierGeometry:
                 if direction=="reverse":
                     self._flipBezierLine()
 
+        #self.dump_history()
         return  len(self.history)
 
     # 描画の開始ポイントとのスナップを調べる
@@ -679,6 +696,12 @@ class BezierGeometry:
         # for point in geom.asPolyline():
         #     self.test2_rbl.addPoint(point)
         return geom
+
+    def dump_history(self):
+        self.log("##### history dump ######")
+        for h in self.history:
+            self.log("{}".format(h.items()))
+        self.log("#####      end     ######")
 
     def log(self, msg):
         QgsMessageLog.logMessage(msg, 'MyPlugin', Qgis.Info)
