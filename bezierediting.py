@@ -1,21 +1,11 @@
 # -*- coding: utf-8 -*-
-#-----------------------------------------------------------
-
-# Import the PyQt and the QGIS libraries
-from __future__ import absolute_import
-from builtins import object
 from qgis.PyQt.QtCore import *
 from qgis.PyQt.QtWidgets import *
 from qgis.PyQt.QtGui import *
 from qgis.core import *
 from qgis.gui import *
-
-#Import own classes and tools
 from .beziereditingtool import BezierEditingTool
-
-# initialize Qt resources from file resources.py
 from . import resources
-
 
 class BezierEditing2(object):
 

@@ -3,6 +3,7 @@ from qgis.core import *
 from .fitCurves import *
 import math
 import numpy as np
+import copy
 
 class BezierGeometry:
 
@@ -33,27 +34,57 @@ class BezierGeometry:
             c3 = QgsPointXY(pe[0], pe[1])
             if i == 0:
                 b._addAnchor(-1, p0)
-                b.moveHandle(i * 2, c0)
-                b.moveHandle(i * 2 + 1, c1)
+                b._moveHandle(i * 2, c0)
+                b._moveHandle(i * 2 + 1, c1)
                 b._addAnchor(-1, p1)
-                b.moveHandle((i + 1) * 2, c2)
-                b.moveHandle((i + 1) * 2 + 1, c3)
+                b._moveHandle((i + 1) * 2, c2)
+                b._moveHandle((i + 1) * 2 + 1, c3)
             else:
-                b.moveHandle(i * 2 + 1, c1)
+                b._moveHandle(i * 2 + 1, c1)
                 b._addAnchor(-1, p1)
-                b.moveHandle((i + 1) * 2, c2)
-                b.moveHandle((i + 1) * 2 + 1, c3)
+                b._moveHandle((i + 1) * 2, c2)
+                b._moveHandle((i + 1) * 2 + 1, c3)
 
         return b
 
-    def asGeometry(self):
-        geom = QgsGeometry.fromPolylineXY(self.points)
-        return geom
+    def asGeometry(self, layer_type,layer_wkbtype):
+        result = None
+        geom = None
+        num_anchor = self.anchorCount()
 
+        if layer_type == QgsWkbTypes.PointGeometry and num_anchor == 1:
+            geom = QgsGeometry.fromPointXY(self.points[0])
+            result = True
+        elif layer_type == QgsWkbTypes.LineGeometry and num_anchor >= 2:
+            if layer_wkbtype == QgsWkbTypes.LineString:
+                geom = QgsGeometry.fromPolylineXY(self.points)
+                result = True
+            elif layer_wkbtype == QgsWkbTypes.MultiLineString:
+                geom = QgsGeometry.fromMultiPolylineXY([self.points])
+                result = True
+        elif layer_type == QgsWkbTypes.PolygonGeometry and num_anchor >= 3:
+            geom = QgsGeometry.fromPolygonXY([self.points])
+            result = True
+        elif layer_type == QgsWkbTypes.LineGeometry and num_anchor < 2:
+            # 　ラインレイヤで1点しかない場合は削除
+            result = None
+        elif layer_type == QgsWkbTypes.PolygonGeometry and num_anchor < 3:
+            # 　ポリゴンレイヤで2点以下しかない場合は削除
+            result = None
+        else:
+            result = False
+            # 　それ以外は、レイヤの間違いの可能性のためメッセージのみ
+        return result,geom
 
-    def add_anchor(self, idx, point):
-        self.history.append({"state": "add_anchor", "pointidx": idx})
+    def add_anchor(self, idx, point, undo=True):
+        if undo:
+            self.history.append({"state": "add_anchor", "pointidx": idx})
         self._addAnchor(idx, point)
+
+    def move_anchor(self, idx, point, undo=True):
+        if undo:
+            self.history.append({"state": "move_anchor", "pointidx": idx, "point": point})
+        self._moveAnchor(idx, point)
 
     def delete_anchor(self, idx, point):
         self.history.append(
@@ -66,6 +97,20 @@ class BezierGeometry:
         )
         self._deleteAnchor(idx)
 
+    def move_handle(self, idx, point, undo=True):
+        if undo:
+            self.history.append({"state": "move_handle", "pointidx": idx, "point": point})
+        self._moveHandle(idx, point)
+
+    def move_handle2(self, anchor_idx, point):
+        # アンカーの両側のハンドルを移動
+        handle_idx = anchor_idx * 2
+        p = self.getAnchor(anchor_idx)
+        pb = QgsPointXY(p[0] - (point[0] - p[0]), p[1] - (point[1] - p[1]))
+        self._moveHandle(handle_idx, pb)
+        self._moveHandle(handle_idx + 1, point)
+        return handle_idx,pb
+
     def delete_handle(self, idx, point):
         self.history.append(
             {"state": "delete_handle",
@@ -74,23 +119,7 @@ class BezierGeometry:
              }
         )
         pnt = self.getAnchor(int(idx / 2))
-        self.moveHandle(idx, pnt)
-    
-    def move_anchor(self, idx, point):
-        self.history.append({"state": "move_anchor", "pointidx": idx, "point": point})
-
-    
-    def move_handle(self, idx, point):
-        self.history.append({"state": "move_handle", "pointidx": idx, "point": point})
-
-    def move_handle2(self, anchor_idx, point):
-        # アンカーの両側のハンドルを移動
-        handle_idx = anchor_idx * 2
-        p = self.getAnchor(anchor_idx)
-        pb = QgsPointXY(p[0] - (point[0] - p[0]), p[1] - (point[1] - p[1]))
-        self.moveHandle(handle_idx, pb)
-        self.moveHandle(handle_idx + 1, point)
-        return handle_idx,pb
+        self._moveHandle(idx, pnt)
 
     def flip_line(self):
         self.history.append({"state": "flip_line"})
@@ -114,13 +143,15 @@ class BezierGeometry:
         update_line = update_geom.asPolyline()
         bezier_geom = QgsGeometry.fromPolylineXY(bezier_line)
 
+        if self.anchorCount() == 1:
+            #スナップのために作成した最初のアンカーを消す
+            self._deleteAnchor(0)
         #新規ベジエの場合
         if len(bezier_line) == 0:
             self.history.append({"state": "start_pen"})
             geom = self._smoothingGeometry(update_line)
             pointnum, _, _ = self._addGeometryToBezier(geom, 0, last=True)
             self.history.append({"state": "end_pen", "direction": "forward"})
-
         #修正の場合
         else:
             startpnt = update_line[0]
@@ -199,14 +230,12 @@ class BezierGeometry:
                 self._flipBezierLine()
                 self.history[-1]["direction"] = "reverse"
 
-            # スタートポイントにスナップしていたらスムーズ処理でずれた最後の点を最初のポイントに動かす
-            if snap_to_start:
-                self.moveAnchor(self.anchorCount() - 1, self.getAnchor(0))
-
+        # スタートポイントにスナップしていたらスムーズ処理でずれた最後の点を最初のポイントに動かす
+        if snap_to_start:
+            self._moveAnchor(self.anchorCount() - 1, self.getAnchor(0))
 
     # ベジエ曲線をpointの位置で二つのラインに分割したラインを返す
     def split_line(self, idx, point, isAnchor):
-
         if isAnchor:
             lineA = self.points[0:self._pointsIdx(idx) + 1]
             lineB = self.points[self._pointsIdx(idx):]
@@ -225,62 +254,14 @@ class BezierGeometry:
     def getAnchor(self, idx):
         return self.anchor[idx]
 
+    def getHandle(self, idx):
+        return self.handle[idx]
+
     def reset(self):
         self.points = []  # 補間点
         self.anchor = []  # ポイント
         self.handle = []  # コントロールポイント
         self.history = [] # undoの履歴
-
-
-    # 特定のアンカーを移動してベジエ曲線を更新
-    def moveAnchor(self, idx, point):
-        diff = point - self.getAnchor(idx)
-        self._setAnchor(idx, point)
-        self._setHandle(idx*2, self.getHandle(idx * 2)+diff)
-        self._setHandle(idx*2+1,self.getHandle(idx * 2+1)+diff)
-        # ベジエを更新
-        # 右側
-        if idx < self.anchorCount()-1:
-            p1 = self.getAnchor(idx)
-            p2 = self.getAnchor(idx + 1)
-            c1 = self.getHandle(idx * 2+1)
-            c2 = self.getHandle(idx * 2 + 2)
-            points = self._bezier(p1, c1, p2, c2)
-            self.points[self._pointsIdx(idx):self._pointsIdx(idx + 1) + 1] = points
-        # 左側
-        if idx >= 1:
-            p1 = self.getAnchor(idx - 1)
-            p2 = self.getAnchor(idx)
-            c1 = self.getHandle(idx * 2 - 1)
-            c2 = self.getHandle(idx * 2)
-            points = self._bezier(p1, c1, p2, c2)
-            self.points[self._pointsIdx(idx - 1):self._pointsIdx(idx) + 1] = points
-
-    # ハンドルを移動してベジエ曲線を更新
-    def moveHandle(self, idx, point):
-        self._setHandle(idx,point)
-        # ベジエの更新
-        # ポイント2点目以降なら更新
-        if self.anchorCount() > 1:
-            #右側
-            if idx % 2 == 1 and idx < self._handleCount()-1:
-                idxP = idx // 2
-                p1 = self.getAnchor(idxP)
-                p2 = self.getAnchor(idxP + 1)
-                c1 = self.getHandle(idx)
-                c2 = self.getHandle(idx + 1)
-            #左側
-            elif idx % 2 == 0 and idx >= 1:
-                idxP = (idx - 1) // 2
-                p1 = self.getAnchor(idxP)
-                p2 = self.getAnchor(idxP + 1)
-                c1 = self.getHandle(idx - 1)
-                c2 = self.getHandle(idx)
-            #上記以外は何もしない
-            else:
-                return
-            points = self._bezier(p1, c1, p2, c2)
-            self.points[self._pointsIdx(idxP):self._pointsIdx(idxP + 1) + 1] = points
 
     # アンカーと近いかどうか.
     def checkSnapToAnchor(self, point, selected_idx, d):
@@ -325,7 +306,7 @@ class BezierGeometry:
         snap_point = None
         snap_idx = None
         if self.anchorCount() > 1:
-            geom = self.asGeometry()
+            geom =  QgsGeometry.fromPolylineXY(self.points)
             (dist, minDistPoint, afterVertex, leftOf) = geom.closestSegmentWithContext(point)
             if math.sqrt(dist) < d:
                 snapped = True
@@ -338,7 +319,7 @@ class BezierGeometry:
         snapped = False
         snap_point = None
         snap_idx = None
-        if self.anchorCount() > 1:
+        if self.anchorCount() > 0:
             start_anchor = self.getAnchor(0)
             near = self._eachPointIsNear(start_anchor, point,d)
             if near:
@@ -354,19 +335,19 @@ class BezierGeometry:
             if act["state"]=="add_anchor":
                 self._deleteAnchor(act["pointidx"])
             elif act["state"]=="move_anchor":
-                self.moveAnchor(act["pointidx"],act["point"])
+                self._moveAnchor(act["pointidx"],act["point"])
             elif act["state"]=="move_handle":
-                self.moveHandle(act["pointidx"],act["point"])
+                self._moveHandle(act["pointidx"],act["point"])
             elif act["state"]=="insert_anchor":
                 self._deleteAnchor(act["pointidx"])
-                self.moveHandle((act["pointidx"]-1) * 2 + 1, act["ctrlpoint0"])
-                self.moveHandle((act["pointidx"]-1) * 2 + 2, act["ctrlpoint1"])
+                self._moveHandle((act["pointidx"]-1) * 2 + 1, act["ctrlpoint0"])
+                self._moveHandle((act["pointidx"]-1) * 2 + 2, act["ctrlpoint1"])
             elif act["state"]=="delete_anchor":
                 self._addAnchor(act["pointidx"],act["point"])
-                self.moveHandle(act["pointidx"] * 2, act["ctrlpoint0"])
-                self.moveHandle(act["pointidx"] * 2+1, act["ctrlpoint1"])
+                self._moveHandle(act["pointidx"] * 2, act["ctrlpoint0"])
+                self._moveHandle(act["pointidx"] * 2+1, act["ctrlpoint1"])
             elif act["state"] == "delete_handle":
-                self.moveHandle(act["pointidx"], act["point"])
+                self._moveHandle(act["pointidx"], act["point"])
             elif act["state"] == "flip_line":
                 self._flipBezierLine()
                 self.undo()
@@ -380,13 +361,13 @@ class BezierGeometry:
                         for i in range(act["pointnum"]):
                             self._deleteAnchor(act["pointidx"])
                         if act["cp_first"] is not None:
-                            self.moveHandle(act["pointidx"] * 2 - 1, act["cp_first"])
+                            self._moveHandle(act["pointidx"] * 2 - 1, act["cp_first"])
                         if act["cp_last"] is not None:
-                            self.moveHandle(act["pointidx"] * 2, act["cp_last"])
+                            self._moveHandle(act["pointidx"] * 2, act["cp_last"])
                     elif act["state"]=="delete_anchor":
                         self._addAnchor(act["pointidx"], act["point"])
-                        self.moveHandle(act["pointidx"] * 2, act["ctrlpoint0"])
-                        self.moveHandle(act["pointidx"] * 2 + 1, act["ctrlpoint1"])
+                        self._moveHandle(act["pointidx"] * 2, act["ctrlpoint0"])
+                        self._moveHandle(act["pointidx"] * 2 + 1, act["ctrlpoint1"])
                     act = self.history.pop()
                 if direction=="reverse":
                     self._flipBezierLine()
@@ -404,10 +385,10 @@ class BezierGeometry:
     def _insertAnchorPointToBezier(self, point_idx, anchor_idx, point):
         c1a, c2a, c1b, c2b = self._recalcHandlePosition(point_idx, anchor_idx, point)
         self._addAnchor(anchor_idx, point)
-        self.moveHandle((anchor_idx - 1) * 2 + 1, c1a)
-        self.moveHandle((anchor_idx - 1) * 2 + 2, c2a)
-        self.moveHandle((anchor_idx - 1) * 2 + 3, c1b)
-        self.moveHandle((anchor_idx - 1) * 2 + 4, c2b)
+        self._moveHandle((anchor_idx - 1) * 2 + 1, c1a)
+        self._moveHandle((anchor_idx - 1) * 2 + 2, c2a)
+        self._moveHandle((anchor_idx - 1) * 2 + 3, c1b)
+        self._moveHandle((anchor_idx - 1) * 2 + 4, c2b)
 
     # ラインのジオメトリをベジエ曲線に挿入
     def _addGeometryToBezier(self, geom, offset, last=True):
@@ -434,9 +415,9 @@ class BezierGeometry:
                 p1 = QgsPointXY(bezier[3][0], bezier[3][1])
                 c1 = QgsPointXY(bezier[1][0], bezier[1][1])
                 c2 = QgsPointXY(bezier[2][0], bezier[2][1])
-                self.moveHandle(i * 2 + 1, c1)
+                self._moveHandle(i * 2 + 1, c1)
                 self._addAnchor(i + 1, p1)
-                self.moveHandle((i + 1) * 2, c2)
+                self._moveHandle((i + 1) * 2, c2)
                 pointnum = pointnum + 1
 
             elif offset > 0:
@@ -444,11 +425,11 @@ class BezierGeometry:
                 c1 = QgsPointXY(bezier[1][0], bezier[1][1])
                 c2 = QgsPointXY(bezier[2][0], bezier[2][1])
                 idx = (offset - 1 + i) * 2 + 1
-                self.moveHandle(idx, c1)
+                self._moveHandle(idx, c1)
                 if i != len(beziers) - 1 or last:  # last=Fだと最後の点を挿入しない。
                     self._addAnchor(offset + i, p1)
                     pointnum = pointnum + 1
-                self.moveHandle(idx + 1, c2)
+                self._moveHandle(idx + 1, c2)
 
         return pointnum, cp_first, cp_last
 
@@ -476,7 +457,7 @@ class BezierGeometry:
             c2 = self.getHandle(idx * 2)
             pointsB = self._bezier(p1, c1, p2, c2)
         if idx == 0:  # 最初のアンカーは追加するだけ
-            self.points = self.anchor
+            self.points = copy.copy(self.anchor)
         elif idx == 1 and idx == self.anchorCount() - 1:  # 新規追加の2点目のとき。最初の表示
             self.points = pointsB
         elif idx >= 2 and idx == self.anchorCount() - 1:  # 2点目以降の追加とき
@@ -501,12 +482,61 @@ class BezierGeometry:
             c2 = self.getHandle((idx + 1) * 2)
             points = self._bezier(p1, c1, p2, c2)
             self.points[self._pointsIdx(idx - 1):self._pointsIdx(idx + 1) + 1] = points
-
         self._delHandle(2 * idx)
         self._delHandle(2 * idx)
         self._delAnchor(idx)
 
         return
+
+    # 特定のアンカーを移動してベジエ曲線を更新
+    def _moveAnchor(self, idx, point):
+        diff = point - self.getAnchor(idx)
+        self._setAnchor(idx, point)
+        self._setHandle(idx*2, self.getHandle(idx * 2)+diff)
+        self._setHandle(idx*2+1,self.getHandle(idx * 2+1)+diff)
+        # ベジエを更新
+        # 右側
+        if idx < self.anchorCount()-1:
+            p1 = self.getAnchor(idx)
+            p2 = self.getAnchor(idx + 1)
+            c1 = self.getHandle(idx * 2+1)
+            c2 = self.getHandle(idx * 2 + 2)
+            points = self._bezier(p1, c1, p2, c2)
+            self.points[self._pointsIdx(idx):self._pointsIdx(idx + 1) + 1] = points
+        # 左側
+        if idx >= 1:
+            p1 = self.getAnchor(idx - 1)
+            p2 = self.getAnchor(idx)
+            c1 = self.getHandle(idx * 2 - 1)
+            c2 = self.getHandle(idx * 2)
+            points = self._bezier(p1, c1, p2, c2)
+            self.points[self._pointsIdx(idx - 1):self._pointsIdx(idx) + 1] = points
+
+    # ハンドルを移動してベジエ曲線を更新
+    def _moveHandle(self, idx, point):
+        self._setHandle(idx,point)
+        # ベジエの更新
+        # ポイント2点目以降なら更新
+        if self.anchorCount() > 1:
+            #右側
+            if idx % 2 == 1 and idx < self._handleCount()-1:
+                idxP = idx // 2
+                p1 = self.getAnchor(idxP)
+                p2 = self.getAnchor(idxP + 1)
+                c1 = self.getHandle(idx)
+                c2 = self.getHandle(idx + 1)
+            #左側
+            elif idx % 2 == 0 and idx >= 1:
+                idxP = (idx - 1) // 2
+                p1 = self.getAnchor(idxP)
+                p2 = self.getAnchor(idxP + 1)
+                c1 = self.getHandle(idx - 1)
+                c2 = self.getHandle(idx)
+            #上記以外は何もしない
+            else:
+                return
+            points = self._bezier(p1, c1, p2, c2)
+            self.points[self._pointsIdx(idxP):self._pointsIdx(idxP + 1) + 1] = points
 
     # ベジエ曲線にアンカーを追加する際にアンカー間のポイントリストから両側のハンドル位置を再計算する
     def _recalcHandlePosition(self, point_idx, anchor_idx, pnt):
@@ -610,9 +640,6 @@ class BezierGeometry:
     def _handleCount(self):
         return len(self.handle)
 
-    def getHandle(self, idx):
-        return self.handle[idx]
-    
     def _setHandle(self, idx, point):
         self.handle[idx] = point
 

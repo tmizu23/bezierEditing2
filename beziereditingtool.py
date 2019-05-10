@@ -1,7 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import
-from builtins import zip
-from builtins import range
 from qgis.PyQt.QtCore import *
 from qgis.PyQt.QtWidgets import *
 from qgis.PyQt.QtGui import *
@@ -85,11 +82,12 @@ class BezierEditingTool(QgsMapTool):
         if self.mode == "bezier":
             # ベジエツールで右クリック
             if event.button() == Qt.RightButton:
-                # 編集を確定する
                 if self.editing:
+                    # 逆向きにする
                     if snapped[4]:
                         self.b.flip_line()
                         self.m.showBezierLineMarkers(self.show_handle)
+                    # 編集を確定する
                     else:
                         self.finish_editing(layer)
                 # ベジエに変換する
@@ -174,6 +172,7 @@ class BezierEditingTool(QgsMapTool):
                     self.b = BezierGeometry()
                     self.m = BezierMarker(self.canvas,self.b)
                     pnt = mouse_point
+                    self.b.add_anchor(0,pnt,undo=False)
                     self.editing = True
                 # 編集中でベジエ曲線に近いなら修正
                 elif self.editing and snapped[3]:
@@ -196,37 +195,36 @@ class BezierEditingTool(QgsMapTool):
                     self.start_editing(layer,mouse_point)
             # 左クリック
             elif event.button() == Qt.LeftButton:
-                # 編集中で編集中のラバーバンドに近いなら
-                if self.editing:
-                    if self.editing_feature_id is None:
-                        QMessageBox.warning(None, "Warning", u"フィーチャーがありません")
-                        return
-                    if snapped[1]:
-                        lineA, lineB = self.b.split_line(snap_idx[1], snap_point[1],isAnchor=True)
-                    elif snapped[3]:
-                        lineA, lineB = self.b.split_line(snap_idx[3],snap_point[3],isAnchor=False)
-                    else:
-                        return
+                if self.editing and self.editing_feature_id:
                     # 作成するオブジェクトをgeomに変換。修正するためのフィーチャーも取得
                     type = layer.geometryType()
                     if type == QgsWkbTypes.LineGeometry:
+                        if snapped[1]:
+                            lineA, lineB = self.b.split_line(snap_idx[1], snap_point[1], isAnchor=True)
+                        elif snapped[3]:
+                            lineA, lineB = self.b.split_line(snap_idx[3], snap_point[3], isAnchor=False)
+                        else:
+                            return
+
                         if layer.wkbType() == QgsWkbTypes.LineString:
                             geomA = QgsGeometry.fromPolylineXY(lineA)
                             geomB = QgsGeometry.fromPolylineXY(lineB)
                         elif layer.wkbType() == QgsWkbTypes.MultiLineString:
                             geomA = QgsGeometry.fromMultiPolylineXY([lineA])
                             geomB = QgsGeometry.fromMultiPolylineXY([lineB])
+
+                        feature = self.getFeatureById(layer, self.editing_feature_id)
+                        _, _ = self.createFeature(geomB, feature, editmode=False, showdlg=False)
+                        f, _ = self.createFeature(geomA, feature, editmode=True, showdlg=False)
+                        layer.removeSelection()
+                        layer.select(f.id())
+                        self.resetPoints()
+
                     else:
                         QMessageBox.warning(None, "Warning", u"レイヤのタイプが違います")
-                        self.resetPoints()
-                        return
-
-                    feature = self.getFeatureById(layer, self.editing_feature_id)
-                    _,_ = self.createFeature(geomB, feature, editmode=False,showdlg=False)
-                    f,_ = self.createFeature(geomA, feature, editmode=True,showdlg=False)
-                    layer.removeSelection()
-                    layer.select(f.id())
-                    self.resetPoints()
+                        #self.resetPoints()
+                else:
+                    QMessageBox.warning(None, "Warning", u"切断できるフィーチャーがありません")
 
     def canvasMoveEvent(self, event):
         layer = self.canvas.currentLayer()
@@ -253,14 +251,14 @@ class BezierEditingTool(QgsMapTool):
                 self.canvas.setCursor(self.deletehandle_cursor)
             # 選択されたハンドルの移動
             elif self.mouse_state=="move_handle":
-                self.b.moveHandle(self.selected_idx, mouse_point)
+                self.b.move_handle(self.selected_idx, mouse_point,undo=False)
                 self.m.moveHandleMarker(self.selected_idx, mouse_point)
             # 選択されたアンカーの移動
             elif self.mouse_state=="move_anchor":
                 pnt = snap_point[0]
                 if snapped[1]:
                     pnt = snap_point[1]
-                self.b.moveAnchor(self.selected_idx, pnt)
+                self.b.move_anchor(self.selected_idx, pnt, undo=False)
                 self.m.moveAnchorMarker(self.selected_idx, pnt)
             else:
                 if snapped[1]:
@@ -311,36 +309,30 @@ class BezierEditingTool(QgsMapTool):
                 self.editing = True
 
     def finish_editing(self,layer):
-        num_anchor = self.b.anchorCount()
+
         #self.log("{}".format(num_anchor))
         # 作成するオブジェクトをgeomに変換。修正するためのフィーチャーも取得
-        type = layer.geometryType()
-        if type == QgsWkbTypes.PointGeometry and num_anchor == 1:
-            geom = QgsGeometry.fromPointXY(self.b.points[0])
-        elif type == QgsWkbTypes.LineGeometry and num_anchor >= 2:
-            if layer.wkbType() == QgsWkbTypes.LineString:
-                geom = QgsGeometry.fromPolylineXY(self.b.points)
-            elif layer.wkbType() == QgsWkbTypes.MultiLineString:
-                geom = QgsGeometry.fromMultiPolylineXY([self.b.points])
-        elif type == QgsWkbTypes.PolygonGeometry and num_anchor >= 3:
-            geom = QgsGeometry.fromPolygonXY([self.b.points])
-        else:
-            QMessageBox.warning(None, "Warning", u"レイヤのタイプが違います")
-            return
-
-        if  self.editing_feature_id is not None:
-            feature = self.getFeatureById(layer, self.editing_feature_id)
-            if feature is None:
-                QMessageBox.warning(None, "Warning", u"レイヤを確かめてください")
-                self.resetPoints()
-                return
-            f,continueFlag = self.createFeature(geom, feature, editmode=True)
-        else:
-            f,continueFlag = self.createFeature(geom, None, editmode=False)
-
-        if continueFlag is False:
+        layer_type = layer.geometryType()
+        layer_wkbtype = layer.wkbType()
+        result,geom = self.b.asGeometry(layer_type,layer_wkbtype)
+        if result is None:
             self.resetPoints()
-
+        elif result is False:
+            QMessageBox.warning(None, "Warning", u"レイヤのタイプが違います")
+        else:
+            # 新規
+            if  self.editing_feature_id is None:
+                f, continueFlag = self.createFeature(geom, None, editmode=False)
+            # 修正
+            else:
+                feature = self.getFeatureById(layer, self.editing_feature_id)
+                if feature is None:
+                    QMessageBox.warning(None, "Warning", u"レイヤを確かめてください")
+                    self.resetPoints()
+                else:
+                    f,continueFlag = self.createFeature(geom, feature, editmode=True)
+            if continueFlag is False:
+                self.resetPoints()
         self.canvas.refresh()
 
     # ペン関係
@@ -441,10 +433,11 @@ class BezierEditingTool(QgsMapTool):
                         continueFlag = True
             else:
                 layer.beginEditCommand("Bezier edited")
-                dlg = self.iface.getFeatureForm(layer, feat)
+                f=feat
+                dlg = self.iface.getFeatureForm(layer, f)
                 ok = dlg.exec_()
                 if ok:
-                    layer.changeGeometry(feat.id(), geom)
+                    layer.changeGeometry(f.id(), geom)
                     layer.endEditCommand()
                 else:
                     layer.destroyEditCommand()
