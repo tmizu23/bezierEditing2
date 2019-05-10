@@ -76,6 +76,9 @@ class BezierGeometry:
             # 　それ以外は、レイヤの間違いの可能性のためメッセージのみ
         return result,geom
 
+    def asPolyline(self):
+        return self.points
+
     def add_anchor(self, idx, point, undo=True):
         if undo:
             self.history.append({"state": "add_anchor", "pointidx": idx})
