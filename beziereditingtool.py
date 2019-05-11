@@ -4,6 +4,7 @@ from qgis.PyQt.QtWidgets import *
 from qgis.PyQt.QtGui import *
 from qgis.core import *
 from qgis.gui import *
+import os
 import math
 import numpy as np
 from .BezierGeometry import *
@@ -12,6 +13,12 @@ from .BezierMarker import *
 class BezierEditingTool(QgsMapTool):
     def __init__(self, canvas,iface):
         QgsMapTool.__init__(self, canvas)
+
+        self.translator = QTranslator()
+        self.translator.load(
+            os.path.dirname(os.path.abspath(__file__)) + "/i18n/" + QLocale.system().name()[0:2] + ".qm")
+        QApplication.installTranslator(self.translator)
+
         self.iface = iface
         self.canvas = canvas
 
@@ -55,6 +62,9 @@ class BezierEditingTool(QgsMapTool):
         self.shift = False
         self.b = None #BezierGeometry #現時点では、1度に1つだけ
         self.m = None #BezierMarker
+
+    def tr(self, message):
+        return QCoreApplication.translate('BezierEditingTool', message)
 
     ####### キー、キャンパスイベント
     def keyPressEvent(self, event):
@@ -222,10 +232,9 @@ class BezierEditingTool(QgsMapTool):
                         self.resetPoints()
 
                     else:
-                        QMessageBox.warning(None, "Warning", u"レイヤのタイプが違います")
-                        #self.resetPoints()
+                        QMessageBox.warning(None, "Warning", self.tr(u"The layer geometry type is different."))
                 else:
-                    QMessageBox.warning(None, "Warning", u"切断できるフィーチャーがありません")
+                    QMessageBox.warning(None, "Warning", self.tr(u"No feature to split."))
         elif self.mode == "unsplit":
             # 右クリックで確定
             if event.button() == Qt.RightButton:
@@ -341,7 +350,7 @@ class BezierEditingTool(QgsMapTool):
         if result is None:
             continueFlag = False
         elif result is False:
-            reply = QMessageBox.question(None, "Question", u"レイヤのタイプが違います。編集を続けますか？", QMessageBox.Yes,
+            reply = QMessageBox.question(None, "Question", self.tr(u"The layer geometry type is different. Do you want to continue editing?"), QMessageBox.Yes,
                                          QMessageBox.No)
             if reply == QMessageBox.Yes:
                 continueFlag = True
@@ -355,7 +364,7 @@ class BezierEditingTool(QgsMapTool):
             else:
                 feature = self.getFeatureById(layer, self.editing_feature_id)
                 if feature is None:
-                    reply = QMessageBox.question(None, "Question", u"レイヤを確かめてください。編集を続けますか？", QMessageBox.Yes,
+                    reply = QMessageBox.question(None, "Question", self.tr(u"No feature. Do you want to continue editing?"), QMessageBox.Yes,
                                                  QMessageBox.No)
                     if reply == QMessageBox.Yes:
                         continueFlag = True
@@ -403,7 +412,7 @@ class BezierEditingTool(QgsMapTool):
             if len(polyline) % 10 != 1:
                 # 他のツールで編集されているのでベジエに変換できない。
                 # 編集されていても偶然、あまりが1になる場合は、変換してしまう。
-                QMessageBox.warning(None, "Warning", u"他のツールで編集されたオブジェクトはベジエに変換できません")
+                QMessageBox.warning(None, "Warning", self.tr(u"The feature can't convert to bezier."))
                 return False
 
             self.b = BezierGeometry.convertLineToBezier(polyline)
@@ -418,7 +427,7 @@ class BezierEditingTool(QgsMapTool):
             if len(polygon) % 10 != 1:
                 # 他のツールで編集されているのでベジエに変換できない。
                 # 編集されていても偶然、あまりが1になる場合は、変換してしまう。
-                QMessageBox.warning(None, "Warning", u"他のツールで編集されたオブジェクトはベジエに変換できません")
+                QMessageBox.warning(None, "Warning", self.tr(u"The feature can't convert to bezier."))
                 return False
 
             self.b = BezierGeometry.convertPolygonToBezier(polygon)
@@ -427,7 +436,7 @@ class BezierEditingTool(QgsMapTool):
 
             return True
         else:
-            QMessageBox.warning(None, "Warning", u"ベジエに変換できないレイヤタイプです")
+            QMessageBox.warning(None, "Warning", self.tr(u"The layer geometry type doesn't support."))
             return False
 
 
@@ -455,7 +464,7 @@ class BezierEditingTool(QgsMapTool):
                 layer.beginEditCommand("Bezier added")
                 layer.addFeature(f)
             else:
-                #changeGeometryが上手く動かないため追加して、削除
+                # if using changeGeometry function, crashed... it's bug? So using add and delete
                 layer.beginEditCommand("Bezier edited")
                 layer.addFeature(f)
                 layer.deleteFeature(feat.id())
@@ -468,7 +477,7 @@ class BezierEditingTool(QgsMapTool):
                 dlg.setEditCommandMessage("Bezier added")
                 ok = dlg.exec_()
                 if not ok:
-                    reply = QMessageBox.question(None, "Question", u"編集を続けますか？", QMessageBox.Yes,
+                    reply = QMessageBox.question(None, "Question", self.tr(u"Do you want to continue editing?"), QMessageBox.Yes,
                                                  QMessageBox.No)
                     if reply == QMessageBox.Yes:
                         continueFlag = True
@@ -482,7 +491,7 @@ class BezierEditingTool(QgsMapTool):
                     layer.endEditCommand()
                 else:
                     layer.destroyEditCommand()
-                    reply = QMessageBox.question(None, "Question", u"編集を続けますか？", QMessageBox.Yes,
+                    reply = QMessageBox.question(None, "Question",self.tr(u"Do you want to continue editing?"), QMessageBox.Yes,
                                                  QMessageBox.No)
                     if reply == QMessageBox.Yes:
                         continueFlag = True
@@ -578,14 +587,13 @@ class BezierEditingTool(QgsMapTool):
         self.layerCRS = self.canvas.currentLayer().crs()
         self.projectCRS = self.canvas.mapSettings().destinationCrs()
         if self.projectCRS.projectionAcronym() == "longlat":
-            QMessageBox.warning(None, "Warning", u"プロジェクトの投影法を緯度経度から変更してください")
+            QMessageBox.warning(None, "Warning", self.tr(u"Change to project's CRS from latlon."))
 
     # unsplit 関係
     def selectFeatures(self,point,rect=None):
         #layers = QgsMapLayerRegistry.instance().mapLayers().values()
         layers = QgsProject.instance().layerTreeRoot().findLayers()
         for layer in layers:
-            #self.log("{}".format(layer.name().encode('utf-8')))
             if layer.layer().type() != QgsMapLayer.VectorLayer:
                 continue
             near = self.selectNearFeature(layer.layer(), point, rect)
@@ -710,13 +718,9 @@ class BezierEditingTool(QgsMapTool):
                         layer.destroyEditCommand()
                 self.canvas.refresh()
             else:
-                QMessageBox.warning(None, "Warning", u"2本のラインを選択してください")
-                #self.iface.messageBar().pushWarning("Warning", "Select two feature!")
+                QMessageBox.warning(None, "Warning", self.tr(u"Select two features."))
         else:
-            QMessageBox.warning(None, "Warning", u"ラインレイヤを選択してください")
-            #self.iface.messageBar().pushWarning("Warning", "Only Support LineString")
-
-
+            QMessageBox.warning(None, "Warning", self.tr(u"Select Line Layer."))
 
     def activate(self):
         self.canvas.setCursor(self.addanchor_cursor)

@@ -397,7 +397,7 @@ class BezierGeometry:
                 if direction=="reverse":
                     self._flipBezierLine()
 
-        self.dump_history()
+        #self.dump_history()
         return  len(self.history)
 
     # 描画の開始ポイントとのスナップを調べる

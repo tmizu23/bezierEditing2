@@ -7,10 +7,13 @@ from qgis.gui import *
 from .beziereditingtool import BezierEditingTool
 from . import resources
 
+
+
 class BezierEditing2(object):
 
     def __init__(self, iface):
-      # Save reference to the QGIS interface
+
+        # Save reference to the QGIS interface
         self.iface = iface
         self.canvas = self.iface.mapCanvas()
         self.active = False
