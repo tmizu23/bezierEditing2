@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-from qgis.core import *
 from qgis.PyQt.QtGui import *
+from qgis.core import *
 from qgis.gui import *
+
 
 class BezierMarker:
 
@@ -14,7 +15,7 @@ class BezierMarker:
 
         # ベジエ曲線のライン
         self.bezier_rbl = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
-        self.bezier_rbl.setColor(QColor(255, 0, 0,150))
+        self.bezier_rbl.setColor(QColor(255, 0, 0, 150))
         self.bezier_rbl.setWidth(2)
 
     # ベジエ曲線とすべてのマーカーを削除する
@@ -28,7 +29,7 @@ class BezierMarker:
         self.bezier_rbl.reset(QgsWkbTypes.LineGeometry)  # ベイジライン
 
     # ベジエ曲線とすべてのマーカーを表示する
-    def showBezierLineMarkers(self,show_handle=None):
+    def showBezierLineMarkers(self, show_handle=None):
         self.removeBezierLineMarkers()
         for point in self.b.anchor:
             self._setAnchorHandleMarker(self.anchor_marks, len(self.anchor_marks), point)
@@ -91,7 +92,7 @@ class BezierMarker:
         self._setBezierLine(self.b.points, self.bezier_rbl)
 
     # ハンドルの表示、非表示を切り替える
-    def showHandle(self,show):
+    def showHandle(self, show):
         if show:
             self._showAllMarker(self.handle_marks)
             self._showAllRubberBand(self.handle_rbls)
@@ -157,17 +158,17 @@ class BezierMarker:
         rbl = rbls[index]
         self.canvas.scene().removeItem(rbl)
         del rbls[index]
-    
+
     # 全ラバーバンドの削除
     def _removeAllRubberBand(self, rbls):
         for rbl in rbls:
             self.canvas.scene().removeItem(rbl)
-    
+
     # 全ラバーバンドの表示    
     def _showAllRubberBand(self, rbls):
         for rbl in rbls:
             rbl.setColor(QColor(0, 0, 0, 255))
-    
+
     # 全ラバーバンドの非表示
     def _hideAllRubberBand(self, rbls):
         for rbl in rbls:
