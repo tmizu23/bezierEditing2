@@ -1,10 +1,10 @@
 ; the next section is mandatory
 [general]
-name=Bezier Editing2
+name=Bezier Editing
 qgisMinimumVersion=3.0
-description=BezierCurve line/polygon editing
+description=BezierCurve editing
 category=Vector
-version=version 2.0.0
+version=version 1.0.0
 author=Takayuki Mizutani
 email=mizutani@ecoris.co.jp
 ; end of mandatory metadata
@@ -13,7 +13,7 @@ email=mizutani@ecoris.co.jp
 changelog=
 
 ; tags are in comma separated value format, spaces are allowed
-tags=digitizing,vector
+tags=digitizing,vector,bezier
 
 ; these metadata can be empty
 ; in a future version of the web application it will
@@ -22,7 +22,7 @@ tags=digitizing,vector
 homepage=
 tracker=
 repository=
-icon=icon.png
+icon=BezierEditing.png
 
 ; experimental flag
 experimental=False

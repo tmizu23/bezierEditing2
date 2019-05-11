@@ -43,12 +43,12 @@
         <translation>プロジェクトの投影法を緯度経度から変更してください。</translation>
     </message>
     <message>
-        <location filename="../beziereditingtool.py" line="722"/>
+        <location filename="../beziereditingtool.py" line="721"/>
         <source>Select two features.</source>
         <translation>2本のラインを選択してください。</translation>
     </message>
     <message>
-        <location filename="../beziereditingtool.py" line="724"/>
+        <location filename="../beziereditingtool.py" line="723"/>
         <source>Select Line Layer.</source>
         <translation>ラインレイヤを選択してください。</translation>
     </message>

@@ -7,9 +7,7 @@ from qgis.gui import *
 from .beziereditingtool import BezierEditingTool
 from . import resources
 
-
-
-class BezierEditing2(object):
+class BezierEditing(object):
 
     def __init__(self, iface):
 
@@ -23,12 +21,11 @@ class BezierEditing2(object):
         # create toolbar for this plugin
         self.toolbar = self.iface.addToolBar("BezierEditing")
 
-
         # Get the tool
         self.beziertool = BezierEditingTool(self.canvas,self.iface)
 
         # Create bezier action
-        self.bezier_edit = QAction(QIcon(":/plugins/bezierEditing2/icon/beziericon.svg"),"Bezier_editing", self.iface.mainWindow())
+        self.bezier_edit = QAction(QIcon(":/plugins/bezierEditing/icon/beziericon.svg"),"Bezier_editing", self.iface.mainWindow())
         self.bezier_edit.setObjectName("BezierEditing_bezier_edit")
         self.bezier_edit.setEnabled(False)
         self.bezier_edit.setCheckable(True)
@@ -36,7 +33,7 @@ class BezierEditing2(object):
         self.toolbar.addAction(self.bezier_edit)
 
         # Create pen action
-        self.pen_edit = QAction(QIcon(":/plugins/bezierEditing2/icon/penicon.svg"),"Bezier_Freehand editing", self.iface.mainWindow())
+        self.pen_edit = QAction(QIcon(":/plugins/bezierEditing/icon/penicon.svg"),"Bezier_Freehand editing", self.iface.mainWindow())
         self.pen_edit.setObjectName("BezierEditing_pen_edit")
         self.pen_edit.setEnabled(False)
         self.pen_edit.setCheckable(True)
@@ -44,7 +41,7 @@ class BezierEditing2(object):
         self.toolbar.addAction(self.pen_edit)
 
         # Create split action
-        self.split = QAction(QIcon(":/plugins/bezierEditing2/icon/spliticon.svg"),"Bezier_Split", self.iface.mainWindow())
+        self.split = QAction(QIcon(":/plugins/bezierEditing/icon/spliticon.svg"),"Bezier_Split", self.iface.mainWindow())
         self.split.setObjectName("BezierEditing_split")
         self.split.setEnabled(False)
         self.split.setCheckable(True)
@@ -52,7 +49,7 @@ class BezierEditing2(object):
         self.toolbar.addAction(self.split)
 
         # Create unsplit action
-        self.unsplit = QAction(QIcon(":/plugins/bezierEditing2/icon/unspliticon.svg"),"Bezier_Unsplit", self.iface.mainWindow())
+        self.unsplit = QAction(QIcon(":/plugins/bezierEditing/icon/unspliticon.svg"),"Bezier_Unsplit", self.iface.mainWindow())
         self.unsplit.setObjectName("BezierEditing_unsplit")
         self.unsplit.setEnabled(False)
         self.unsplit.setCheckable(True)
@@ -60,7 +57,7 @@ class BezierEditing2(object):
         self.toolbar.addAction(self.unsplit)
 
         # Create show anchor option
-        self.show_handle = QAction(QIcon(":/plugins/bezierEditing2/icon/showhandleicon.svg"),"Bezier_Show Anchor", self.iface.mainWindow())
+        self.show_handle = QAction(QIcon(":/plugins/bezierEditing/icon/showhandleicon.svg"),"Bezier_Show Anchor", self.iface.mainWindow())
         self.show_handle.setObjectName("BezierEditing_show_handle")
         self.show_handle.setCheckable(True)
         self.show_handle.setEnabled(False)
@@ -68,7 +65,7 @@ class BezierEditing2(object):
         self.toolbar.addAction(self.show_handle)
 
         # Create undo option
-        self.undo = QAction(QIcon(":/plugins/bezierEditing2/icon/undoicon.svg"),"Bezier_Undo", self.iface.mainWindow())
+        self.undo = QAction(QIcon(":/plugins/bezierEditing/icon/undoicon.svg"),"Bezier_Undo", self.iface.mainWindow())
         self.undo.setObjectName("BezierEditing_undo")
         self.undo.setEnabled(False)
         self.undo.triggered.connect(self.beziertool.undo)

@@ -39,14 +39,14 @@ class BezierEditingTool(QgsMapTool):
         self.rubberBand.setWidth(1)
 
         #　アイコン
-        self.addanchor_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/anchor.svg'), 1, 1)
-        self.insertanchor_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/anchor_add.svg'), 1, 1)
-        self.deleteanchor_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/anchor_del.svg'), 1, 1)
-        self.movehandle_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/handle.svg'), 1, 1)
-        self.addhandle_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/handle_add.svg'), 1, 1)
-        self.deletehandle_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/handle_del.svg'), 1, 1)
-        self.drawline_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/drawline.svg'), 1, 1)
-        self.split_cursor = QCursor(QPixmap(':/plugins/bezierEditing2/icon/mCrossHair.svg'), -1, -1)
+        self.addanchor_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/anchor.svg'), 1, 1)
+        self.insertanchor_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/anchor_add.svg'), 1, 1)
+        self.deleteanchor_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/anchor_del.svg'), 1, 1)
+        self.movehandle_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/handle.svg'), 1, 1)
+        self.addhandle_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/handle_add.svg'), 1, 1)
+        self.deletehandle_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/handle_del.svg'), 1, 1)
+        self.drawline_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/drawline.svg'), 1, 1)
+        self.split_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/mCrossHair.svg'), -1, -1)
         self.unsplit_cursor = QCursor(Qt.ArrowCursor)
 
        #　変数と初期設定

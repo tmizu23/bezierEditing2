@@ -1,5 +1,5 @@
 <RCC>
-    <qresource prefix="/plugins/bezierEditing2" >
+    <qresource prefix="/plugins/bezierEditing" >
         <file>icon/beziericon.svg</file>
         <file>icon/penicon.svg</file>
         <file>icon/spliticon.svg</file>
