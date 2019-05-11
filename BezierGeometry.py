@@ -47,6 +47,12 @@ class BezierGeometry:
 
         return b
 
+    @classmethod
+    def convertPolygonToBezier(cls, polygon):
+        b = cls()
+        b = b.convertLineToBezier(polygon[0])
+        return b
+
     def asGeometry(self, layer_type,layer_wkbtype):
         result = None
         geom = None
@@ -515,24 +521,26 @@ class BezierGeometry:
         self._setHandle(idx*2, self.getHandle(idx * 2)+diff)
         self._setHandle(idx*2+1,self.getHandle(idx * 2+1)+diff)
         # ベジエを更新
-        if idx == 0:
+        # 1点だけの場合
+        if idx == 0 and self.anchorCount()==1:
             self.points = copy.copy(self.anchor)
-        # 右側
-        if idx < self.anchorCount()-1:
-            p1 = self.getAnchor(idx)
-            p2 = self.getAnchor(idx + 1)
-            c1 = self.getHandle(idx * 2+1)
-            c2 = self.getHandle(idx * 2 + 2)
-            points = self._bezier(p1, c1, p2, c2)
-            self.points[self._pointsIdx(idx):self._pointsIdx(idx + 1) + 1] = points
-        # 左側
-        if idx >= 1:
-            p1 = self.getAnchor(idx - 1)
-            p2 = self.getAnchor(idx)
-            c1 = self.getHandle(idx * 2 - 1)
-            c2 = self.getHandle(idx * 2)
-            points = self._bezier(p1, c1, p2, c2)
-            self.points[self._pointsIdx(idx - 1):self._pointsIdx(idx) + 1] = points
+        else:
+            # 右側
+            if idx < self.anchorCount()-1:
+                p1 = self.getAnchor(idx)
+                p2 = self.getAnchor(idx + 1)
+                c1 = self.getHandle(idx * 2+1)
+                c2 = self.getHandle(idx * 2 + 2)
+                points = self._bezier(p1, c1, p2, c2)
+                self.points[self._pointsIdx(idx):self._pointsIdx(idx + 1) + 1] = points
+            # 左側
+            if idx >= 1:
+                p1 = self.getAnchor(idx - 1)
+                p2 = self.getAnchor(idx)
+                c1 = self.getHandle(idx * 2 - 1)
+                c2 = self.getHandle(idx * 2)
+                points = self._bezier(p1, c1, p2, c2)
+                self.points[self._pointsIdx(idx - 1):self._pointsIdx(idx) + 1] = points
 
     # ハンドルを移動してベジエ曲線を更新
     def _moveHandle(self, idx, point):

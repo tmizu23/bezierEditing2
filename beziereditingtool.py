@@ -193,9 +193,6 @@ class BezierEditingTool(QgsMapTool):
                 if self.editing:
                     self.finish_editing(layer)
                 else:
-                    if layer.geometryType() != QgsWkbTypes.LineGeometry:
-                        QMessageBox.warning(None, "Warning", u"ライン以外はベジエに変換できません")
-                        return
                     self.start_editing(layer,mouse_point)
             # 左クリック
             elif event.button() == Qt.LeftButton:
@@ -329,9 +326,6 @@ class BezierEditingTool(QgsMapTool):
     ####### イベント処理からの呼び出し
     # ベジエ関係
     def start_editing(self,layer,mouse_point):
-        if layer.geometryType() == QgsWkbTypes.PolygonGeometry:
-            QMessageBox.warning(None, "Warning", u"ポリゴンは編集できません")
-            return
         near, f = self.getNearFeatures(layer, mouse_point)
         if near:
             ret = self.convertFeatureToBezier(f[0])
@@ -403,10 +397,8 @@ class BezierEditingTool(QgsMapTool):
             self.m.addAnchorMarker(0, point)
             return True
         elif geom.type() == QgsWkbTypes.LineGeometry:
-            if geom.wkbType() == QgsWkbTypes.MultiLineString:
-                polyline = geom.asMultiPolyline()[0]
-            elif geom.wkbType() == QgsWkbTypes.LineString:
-                polyline = geom.asPolyline()
+            geom.convertToSingleType()
+            polyline = geom.asPolyline()
 
             if len(polyline) % 10 != 1:
                 # 他のツールで編集されているのでベジエに変換できない。
@@ -414,8 +406,22 @@ class BezierEditingTool(QgsMapTool):
                 QMessageBox.warning(None, "Warning", u"他のツールで編集されたオブジェクトはベジエに変換できません")
                 return False
 
-
             self.b = BezierGeometry.convertLineToBezier(polyline)
+            self.m = BezierMarker(self.canvas, self.b)
+            self.m.showBezierLineMarkers(self.show_handle)
+
+            return True
+        elif geom.type() == QgsWkbTypes.PolygonGeometry:
+            geom.convertToSingleType()
+            polygon = geom.asPolygon()
+
+            if len(polygon) % 10 != 1:
+                # 他のツールで編集されているのでベジエに変換できない。
+                # 編集されていても偶然、あまりが1になる場合は、変換してしまう。
+                QMessageBox.warning(None, "Warning", u"他のツールで編集されたオブジェクトはベジエに変換できません")
+                return False
+
+            self.b = BezierGeometry.convertPolygonToBezier(polygon)
             self.m = BezierMarker(self.canvas, self.b)
             self.m.showBezierLineMarkers(self.show_handle)
 
