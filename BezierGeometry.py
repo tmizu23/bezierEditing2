@@ -391,7 +391,7 @@ class BezierGeometry:
                 if direction=="reverse":
                     self._flipBezierLine()
 
-        #self.dump_history()
+        self.dump_history()
         return  len(self.history)
 
     # 描画の開始ポイントとのスナップを調べる
@@ -515,6 +515,8 @@ class BezierGeometry:
         self._setHandle(idx*2, self.getHandle(idx * 2)+diff)
         self._setHandle(idx*2+1,self.getHandle(idx * 2+1)+diff)
         # ベジエを更新
+        if idx == 0:
+            self.points = copy.copy(self.anchor)
         # 右側
         if idx < self.anchorCount()-1:
             p1 = self.getAnchor(idx)

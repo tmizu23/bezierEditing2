@@ -158,15 +158,13 @@ class BezierEditingTool(QgsMapTool):
                         self.b.add_anchor(self.selected_idx, snap_point[0])
                         self.m.addAnchorMarker(self.selected_idx, snap_point[0])
 
+
         elif self.mode == "pen":
             # 右クリックで確定
             if event.button() == Qt.RightButton:
                 if self.editing:
                     self.finish_editing(layer)
                 else:
-                    if layer.geometryType() != QgsWkbTypes.LineGeometry:
-                        QMessageBox.warning(None, "Warning", u"ライン以外はベジエに変換できません")
-                        return
                     self.start_editing(layer,mouse_point)
             # 左クリック
             elif event.button() == Qt.LeftButton:
@@ -325,13 +323,15 @@ class BezierEditingTool(QgsMapTool):
                 self.selectFeatures(mouse_point, r)
             else:
                 self.selectFeatures(mouse_point)
-
-        self.m.showHandle(self.show_handle)
+        if self.m is not None:
+            self.m.showHandle(self.show_handle)
 
     ####### イベント処理からの呼び出し
     # ベジエ関係
     def start_editing(self,layer,mouse_point):
-        # 編集開始
+        if layer.geometryType() == QgsWkbTypes.PolygonGeometry:
+            QMessageBox.warning(None, "Warning", u"ポリゴンは編集できません")
+            return
         near, f = self.getNearFeatures(layer, mouse_point)
         if near:
             ret = self.convertFeatureToBezier(f[0])
@@ -340,16 +340,19 @@ class BezierEditingTool(QgsMapTool):
                 self.editing = True
 
     def finish_editing(self,layer):
-
-        #self.log("{}".format(num_anchor))
         # 作成するオブジェクトをgeomに変換。修正するためのフィーチャーも取得
         layer_type = layer.geometryType()
         layer_wkbtype = layer.wkbType()
         result,geom = self.b.asGeometry(layer_type,layer_wkbtype)
         if result is None:
-            self.resetPoints()
+            continueFlag = False
         elif result is False:
-            QMessageBox.warning(None, "Warning", u"レイヤのタイプが違います")
+            reply = QMessageBox.question(None, "Question", u"レイヤのタイプが違います。編集を続けますか？", QMessageBox.Yes,
+                                         QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                continueFlag = True
+            else:
+                continueFlag = False
         else:
             # 新規
             if  self.editing_feature_id is None:
@@ -358,12 +361,16 @@ class BezierEditingTool(QgsMapTool):
             else:
                 feature = self.getFeatureById(layer, self.editing_feature_id)
                 if feature is None:
-                    QMessageBox.warning(None, "Warning", u"レイヤを確かめてください")
-                    self.resetPoints()
+                    reply = QMessageBox.question(None, "Question", u"レイヤを確かめてください。編集を続けますか？", QMessageBox.Yes,
+                                                 QMessageBox.No)
+                    if reply == QMessageBox.Yes:
+                        continueFlag = True
+                    else:
+                        continueFlag = False
                 else:
                     f,continueFlag = self.createFeature(geom, feature, editmode=True)
-            if continueFlag is False:
-                self.resetPoints()
+        if continueFlag is False:
+            self.resetPoints()
         self.canvas.refresh()
 
     # ペン関係
