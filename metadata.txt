@@ -11,17 +11,15 @@ email=mizutani@ecoris.co.jp
 
 ; start of optional metadata
 changelog=
+    Version 1.0.0
+    - First Release
 
 ; tags are in comma separated value format, spaces are allowed
 tags=digitizing,vector,bezier
 
-; these metadata can be empty
-; in a future version of the web application it will
-; be probably possible to create a project on redmine
-; if they are not filled
-homepage=
-tracker=
-repository=
+homepage=https://github.com/tmizu23/BezierEditing
+tracker=https://github.com/tmizu23/BezierEditing/issues
+repository=https://github.com/tmizu23/BezierEditing
 icon=BezierEditing.png
 
 ; experimental flag

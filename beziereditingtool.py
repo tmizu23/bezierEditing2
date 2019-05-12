@@ -1,5 +1,20 @@
 # -*- coding: utf-8 -*-
-
+""""
+/***************************************************************************
+    BezierEditing
+     --------------------------------------
+    Date                 : 01 05 2019
+    Copyright            : (C) 2019 Takayuki Mizutani
+    Email                : mizutani at ecoris dot co dot jp
+ ***************************************************************************
+ *                                                                         *
+ *   This program is free software; you can redistribute it and/or modify  *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation; either version 2 of the License, or     *
+ *   (at your option) any later version.                                   *
+ *                                                                         *
+ ***************************************************************************/
+"""
 from qgis.PyQt.QtCore import *
 from qgis.PyQt.QtGui import *
 from qgis.PyQt.QtWidgets import *
@@ -17,54 +32,55 @@ class BezierEditingTool(QgsMapTool):
     def __init__(self, canvas, iface):
         QgsMapTool.__init__(self, canvas)
 
+        # translation
         self.translator = QTranslator()
         self.translator.load(
             os.path.dirname(os.path.abspath(__file__)) + "/i18n/" + QLocale.system().name()[0:2] + ".qm")
         QApplication.installTranslator(self.translator)
 
+        # qgis interface
         self.iface = iface
         self.canvas = canvas
+        self.alt = False
+        self.ctrl = False
+        self.shift = False
 
-        # ペンツールのライン
-        self.pen_rbl = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
-        self.pen_rbl.setColor(QColor(255, 0, 0, 150))
-        self.pen_rbl.setWidth(2)
-        # スナップのマーカー
+        # freehand tool line
+        self.freehand_rbl = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
+        self.freehand_rbl.setColor(QColor(255, 0, 0, 150))
+        self.freehand_rbl.setWidth(2)
+        # snap marker
         self.snap_mark = QgsVertexMarker(self.canvas)
         self.snap_mark.setColor(QColor(0, 0, 255))
         self.snap_mark.setPenWidth(2)
         self.snap_mark.setIconType(QgsVertexMarker.ICON_BOX)
         self.snap_mark.setIconSize(10)
-
-        # unsplitでの矩形選択
+        # rectangle selection for unsplit
         self.rubberBand = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
         self.rubberBand.setColor(QColor(255, 0, 0, 100))
         self.rubberBand.setWidth(1)
 
-        # 　アイコン
-        self.addanchor_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/anchor.svg'), 1, 1)
-        self.insertanchor_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/anchor_add.svg'), 1, 1)
-        self.deleteanchor_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/anchor_del.svg'), 1, 1)
-        self.movehandle_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/handle.svg'), 1, 1)
-        self.addhandle_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/handle_add.svg'), 1, 1)
-        self.deletehandle_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/handle_del.svg'), 1, 1)
-        self.drawline_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/drawline.svg'), 1, 1)
-        self.split_cursor = QCursor(QPixmap(':/plugins/bezierEditing/icon/mCrossHair.svg'), -1, -1)
+        # cursor icon
+        self.addanchor_cursor = QCursor(QPixmap(':/plugins/BezierEditing/icon/anchor.svg'), 1, 1)
+        self.insertanchor_cursor = QCursor(QPixmap(':/plugins/BezierEditing/icon/anchor_add.svg'), 1, 1)
+        self.deleteanchor_cursor = QCursor(QPixmap(':/plugins/BezierEditing/icon/anchor_del.svg'), 1, 1)
+        self.movehandle_cursor = QCursor(QPixmap(':/plugins/BezierEditing/icon/handle.svg'), 1, 1)
+        self.addhandle_cursor = QCursor(QPixmap(':/plugins/BezierEditing/icon/handle_add.svg'), 1, 1)
+        self.deletehandle_cursor = QCursor(QPixmap(':/plugins/BezierEditing/icon/handle_del.svg'), 1, 1)
+        self.drawline_cursor = QCursor(QPixmap(':/plugins/BezierEditing/icon/drawline.svg'), 1, 1)
+        self.split_cursor = QCursor(QPixmap(':/plugins/BezierEditing/icon/mCrossHair.svg'), -1, -1)
         self.unsplit_cursor = QCursor(Qt.ArrowCursor)
 
-        # 　変数と初期設定
-        self.mode = "bezier"  # bezier, pen , split, unsplit
-        self.mouse_state = "free"  # free, add_anchor,move_anchor,move_handle,insert_anchor,draw_line
-        self.editing = False  # オブジェクト作成、修正中
-        self.snapping = None  # スナップが設定されているかどうか
-        self.show_handle = False  # ベジエマーカーを表示するかどうか
-        self.editing_feature_id = None  # 編集オブジェクトのid
-        self.selected_idx = None  # 選択されたアンカーもしくはハンドルのインデックス. ドラッグ時の識別のために使用
-        self.alt = False
-        self.ctrl = False
-        self.shift = False
-        self.b = None  # BezierGeometry #現時点では、1度に1つだけ
-        self.m = None  # BezierMarker
+        # initialize variable
+        self.mode = "bezier"  # [bezier, freehand , split, unsplit]
+        self.mouse_state = "free"  # [free, add_anchor,move_anchor,move_handle,insert_anchor,draw_line]
+        self.editing = False  # in bezier editing or not
+        self.snapping = None  # in snap setting or not
+        self.show_handle = False  # show handle or not
+        self.editing_feature_id = None  # bezier editing feature id
+        self.clicked_idx = None  # clicked anchor or handle idx
+        self.bg = None  # BezierGeometry
+        self.bm = None  # BezierMarker
 
     def tr(self, message):
         return QCoreApplication.translate('BezierEditingTool', message)
@@ -91,131 +107,140 @@ class BezierEditingTool(QgsMapTool):
         layer = self.canvas.currentLayer()
         if not layer or layer.type() != QgsMapLayer.VectorLayer:
             return
-        self.check_snapsetting()
-        mouse_point, snapped, snap_point, snap_idx = self.getSnapPoint(event, layer)
-        # self.log("{}".format(snapped))
+        self.checkSnapSetting()
+        mouse_point, snapped, snap_point, snap_idx = self.getSnapPoint(event)
+        # bezier tool
         if self.mode == "bezier":
-            # ベジエツールで右クリック
+            # right click
             if event.button() == Qt.RightButton:
                 if self.editing:
-                    # 逆向きにする
+                    # if right click on first anchor in editing, flip bezier line
                     if snapped[4]:
-                        self.b.flip_line()
-                        self.m.showBezierLineMarkers(self.show_handle)
-                    # 編集を確定する
+                        self.bg.flip_line()
+                        self.bm.show(self.show_handle)
+                    # if right click in editing, bezier editing finish
                     else:
-                        self.finish_editing(layer)
-                # ベジエに変換する
+                        self.finishEditing(layer)
+                # if right click on feature, bezier editing start
                 else:
-                    self.start_editing(layer, mouse_point)
-            # ベジエで左クリック
+                    ok = self.startEditing(layer, mouse_point)
+                    if ok:
+                        self.editing = True
+            # left click
             elif event.button() == Qt.LeftButton:
-                # Ctrlを押しながら
+                # with ctrl
                 if self.ctrl:
-                    # アンカーと重なっていてもアンカーを追加したいとき。ポリゴンを閉じたいときなど。
+                    # if click on anchor with ctrl, force to add anchor not moving anchor
                     if snapped[1]:
                         self.mouse_state = "add_anchor"
-                        self.selected_idx = self.b.anchorCount()
-                        self.b.add_anchor(self.selected_idx, snap_point[1])
-                        self.m.addAnchorMarker(self.selected_idx, snap_point[1])
+                        self.clicked_idx = self.bg.anchorCount()
+                        self.bg.add_anchor(self.clicked_idx, snap_point[1])
+                        self.bm.add_anchor(self.clicked_idx, snap_point[1])
 
-                # Altを押しながら
+                # with alt
                 elif self.alt:
-                    # アンカーからハンドルを引き出すとき
+                    # if click on anchor with alt, move out a handle from anchor
                     if snapped[2] and snapped[1]:
                         self.mouse_state = "move_handle"
-                        self.selected_idx = snap_idx[2]
-                    # アンカーを挿入するとき
+                        self.clicked_idx = snap_idx[2]
+                    # if click on bezier line with alt, insert anchor in bezier line
                     elif snapped[3] and not snapped[1]:
                         self.mouse_state = "insert_anchor"
-                        self.b.insert_anchor(snap_idx[3], snap_point[3])
-                        self.m.showBezierLineMarkers()
+                        self.bg.insert_anchor(snap_idx[3], snap_point[3])
+                        self.bm.show()
 
-                # Shiftを押しながら
+                # with shift
                 elif self.shift:
-                    # アンカーを削除するとき
+                    # if click on anchor with shift, delete anchor from bezier line
                     if snapped[1]:
-                        self.b.delete_anchor(snap_idx[1], snap_point[1])
-                        self.m.deleteAnchorMarker(snap_idx[1])
-                    # ハンドルを削除するとき
+                        self.bg.delete_anchor(snap_idx[1], snap_point[1])
+                        self.bm.delete_anchor(snap_idx[1])
+                    # if click on handle with shift, move handle to anchor
                     elif snapped[2]:
-                        self.b.delete_handle(snap_idx[2], snap_point[2])
-                        pnt = self.b.getAnchor(int(snap_idx[2] / 2))
-                        self.m.moveHandleMarker(snap_idx[2], pnt)
+                        self.bg.delete_handle(snap_idx[2], snap_point[2])
+                        point = self.bg.getAnchor(int(snap_idx[2] / 2))
+                        self.bm.move_handle(snap_idx[2], point)
+                # click with no key
                 else:
-
-                    # 判定の順番が重要
-                    # 「アンカーの移動」かどうか
+                    # if click on anchor, move anchor
                     if snapped[1]:
                         self.mouse_state = "move_anchor"
-                        self.selected_idx = snap_idx[1]
-                        self.b.move_anchor(snap_idx[1], snap_point[1])
-                        self.m.moveAnchorMarker(snap_idx[1], snap_point[1])
+                        self.clicked_idx = snap_idx[1]
+                        self.bg.move_anchor(snap_idx[1], snap_point[1])
+                        self.bm.move_anchor(snap_idx[1], snap_point[1])
 
-                    # 「ハンドルの移動」かどうか
+                    # if click on handle, move handle
                     elif snapped[2]:
                         self.mouse_state = "move_handle"
-                        self.selected_idx = snap_idx[2]
-                        self.b.move_handle(snap_idx[2], snap_point[2])
-                        self.m.moveHandleMarker(snap_idx[2], snap_point[2])
-
+                        self.clicked_idx = snap_idx[2]
+                        self.bg.move_handle(snap_idx[2], snap_point[2])
+                        self.bm.move_handle(snap_idx[2], snap_point[2])
+                    # if click on canvas, add anchor
                     else:
-                        # 上のどれでもなければ「新規ポイント追加」
                         if not self.editing:
-                            self.b = BezierGeometry()
-                            self.m = BezierMarker(self.canvas, self.b)
+                            self.bg = BezierGeometry()
+                            self.bm = BezierMarker(self.canvas, self.bg)
                             self.editing = True
                         self.mouse_state = "add_anchor"
-                        self.selected_idx = self.b.anchorCount()
-                        self.b.add_anchor(self.selected_idx, snap_point[0])
-                        self.m.addAnchorMarker(self.selected_idx, snap_point[0])
-
-
-        elif self.mode == "pen":
-            # 右クリックで確定
+                        self.clicked_idx = self.bg.anchorCount()
+                        self.bg.add_anchor(self.clicked_idx, snap_point[0])
+                        self.bm.add_anchor(self.clicked_idx, snap_point[0])
+        # freehand tool
+        elif self.mode == "freehand":
+            # right click
             if event.button() == Qt.RightButton:
+                # if right click in editing, bezier editing finish
                 if self.editing:
-                    self.finish_editing(layer)
+                    self.finishEditing(layer)
+                # if right click on feature, bezier editing start
                 else:
-                    self.start_editing(layer, mouse_point)
-            # 左クリック
+                    ok = self.startEditing(layer, mouse_point)
+                    if ok:
+                        self.editing = True
+            # left click
             elif event.button() == Qt.LeftButton:
-                # 新規作成
+                # if click on canvas, freehand drawing start
                 if not self.editing:
-                    self.b = BezierGeometry()
-                    self.m = BezierMarker(self.canvas, self.b)
-                    pnt = mouse_point
-                    self.b.add_anchor(0, pnt, undo=False)
+                    self.bg = BezierGeometry()
+                    self.bm = BezierMarker(self.canvas, self.bg)
+                    point = mouse_point
+                    self.bg.add_anchor(0, point, undo=False)
                     self.editing = True
-                # 編集中でベジエ曲線かアンカーに近いなら修正
+                # if click on bezier line, modified by freehand drawing
                 elif self.editing and (snapped[1] or snapped[3]):
                     if snapped[1]:
-                        pnt = snap_point[1]
+                        point = snap_point[1]
                     elif snapped[3]:
-                        pnt = snap_point[3]
+                        point = snap_point[3]
                 else:
                     return
                 self.mouse_state = "draw_line"
-                self.pen_rbl.reset(QgsWkbTypes.LineGeometry)
-                self.pen_rbl.addPoint(pnt)
-
+                self.freehand_rbl.reset(QgsWkbTypes.LineGeometry)
+                self.freehand_rbl.addPoint(point)
+        # split tool
         elif self.mode == "split":
-            # 右クリックで確定
+            # right click
             if event.button() == Qt.RightButton:
+                # if right click in editing, bezier editing finish
                 if self.editing:
-                    self.finish_editing(layer)
+                    self.finishEditing(layer)
+                # if right click on feature, bezier editing start
                 else:
-                    self.start_editing(layer, mouse_point)
-            # 左クリック
+                    ok = self.startEditing(layer, mouse_point)
+                    if ok:
+                        self.editing = True
+            # left click
             elif event.button() == Qt.LeftButton:
+                # if click on bezier line, split bezier feature is created
                 if self.editing and self.editing_feature_id:
-                    # 作成するオブジェクトをgeomに変換。修正するためのフィーチャーも取得
                     type = layer.geometryType()
                     if type == QgsWkbTypes.LineGeometry:
+                        # split on anchor
                         if snapped[1]:
-                            lineA, lineB = self.b.split_line(snap_idx[1], snap_point[1], isAnchor=True)
+                            lineA, lineB = self.bg.split_line(snap_idx[1], snap_point[1], isAnchor=True)
+                        # split on line
                         elif snapped[3]:
-                            lineA, lineB = self.b.split_line(snap_idx[3], snap_point[3], isAnchor=False)
+                            lineA, lineB = self.bg.split_line(snap_idx[3], snap_point[3], isAnchor=False)
                         else:
                             return
 
@@ -231,20 +256,19 @@ class BezierEditingTool(QgsMapTool):
                         f, _ = self.createFeature(geomA, feature, editmode=True, showdlg=False)
                         layer.removeSelection()
                         layer.select(f.id())
-                        self.resetPoints()
+                        self.resetEditing()
 
                     else:
                         QMessageBox.warning(None, "Warning", self.tr(u"The layer geometry type is different."))
                 else:
                     QMessageBox.warning(None, "Warning", self.tr(u"No feature to split."))
+        # unsplit tool
         elif self.mode == "unsplit":
-            # 右クリックで確定
+            # if right click, selected bezier feature are unsplit
             if event.button() == Qt.RightButton:
-                # 結合処理
                 self.unsplit()
-            # 左クリック
+            # if left click, feature selection
             elif event.button() == Qt.LeftButton:
-                # 選択処理
                 self.endPoint = self.startPoint = mouse_point
                 self.isEmittingPoint = True
                 self.showRect(self.startPoint, self.endPoint)
@@ -253,54 +277,70 @@ class BezierEditingTool(QgsMapTool):
         layer = self.canvas.currentLayer()
         if not layer or layer.type() != QgsMapLayer.VectorLayer:
             return
-        mouse_point, snapped, snap_point, snap_idx = self.getSnapPoint(event, layer)
+        mouse_point, snapped, snap_point, snap_idx = self.getSnapPoint(event)
+        # bezier tool
         if self.mode == "bezier":
-            # 追加時のドラッグはハンドルの移動
+            # add anchor and dragging
             if self.mouse_state == "add_anchor":
-                handle_idx, pb = self.b.move_handle2(self.selected_idx, mouse_point)
-                self.m.moveHandleMarker(handle_idx, pb)
-                self.m.moveHandleMarker(handle_idx + 1, mouse_point)
+                handle_idx, pb = self.bg.move_handle2(self.clicked_idx, mouse_point)
+                self.bm.move_handle(handle_idx, pb)
+                self.bm.move_handle(handle_idx + 1, mouse_point)
+            # insert anchor
             elif self.mouse_state == "insert_anchor":
                 pass
+            # add handle
             elif self.alt and snapped[1] and snapped[2]:
                 self.canvas.setCursor(self.addhandle_cursor)
+            # insert anchor
             elif self.alt and snapped[3] and not snapped[1]:
                 self.canvas.setCursor(self.insertanchor_cursor)
+            # force to add anchor
             elif self.ctrl and snapped[1]:
                 self.canvas.setCursor(self.insertanchor_cursor)
+            # delete anchor
             elif self.shift and snapped[1]:
                 self.canvas.setCursor(self.deleteanchor_cursor)
+            # delete handle
             elif self.shift and snapped[2]:
                 self.canvas.setCursor(self.deletehandle_cursor)
-            # 選択されたハンドルの移動
+            # move handle
             elif self.mouse_state == "move_handle":
-                self.b.move_handle(self.selected_idx, mouse_point, undo=False)
-                self.m.moveHandleMarker(self.selected_idx, mouse_point)
-            # 選択されたアンカーの移動
+                self.bg.move_handle(self.clicked_idx, mouse_point, undo=False)
+                self.bm.move_handle(self.clicked_idx, mouse_point)
+            # move anchor
             elif self.mouse_state == "move_anchor":
-                pnt = snap_point[0]
+                point = snap_point[0]
                 if snapped[1]:
-                    pnt = snap_point[1]
-                self.b.move_anchor(self.selected_idx, pnt, undo=False)
-                self.m.moveAnchorMarker(self.selected_idx, pnt)
+                    point = snap_point[1]
+                self.bg.move_anchor(self.clicked_idx, point, undo=False)
+                self.bm.move_anchor(self.clicked_idx, point)
+            # free moving
             else:
+                # on anchor
                 if snapped[1]:
                     self.canvas.setCursor(self.movehandle_cursor)
+                # on handle
                 elif snapped[2]:
                     self.canvas.setCursor(self.movehandle_cursor)
+                # on canvas
                 else:
                     self.canvas.setCursor(self.addanchor_cursor)
-        elif self.mode == "pen":
+        # freehand tool
+        elif self.mode == "freehand":
             self.canvas.setCursor(self.drawline_cursor)
+            # if dragging, drawing line
             if self.mouse_state == "draw_line":
-                pnt = mouse_point
-                # スタートポイントとスナップしてるなら
+                point = mouse_point
+                # on start anchor
                 if snapped[4]:
-                    pnt = snap_point[4]
-                self.pen_rbl.addPoint(pnt)
+                    point = snap_point[4]
+                self.freehand_rbl.addPoint(point)
+        # split tool
         elif self.mode == "split":
             self.canvas.setCursor(self.split_cursor)
+        # unsplit tool
         elif self.mode == "unsplit":
+            # if dragging, draw rectangle area
             self.canvas.setCursor(self.unsplit_cursor)
             if not self.isEmittingPoint:
                 return
@@ -311,44 +351,54 @@ class BezierEditingTool(QgsMapTool):
         layer = self.canvas.currentLayer()
         if not layer or layer.type() != QgsMapLayer.VectorLayer:
             return
-        mouse_point, snapped, snap_point, _ = self.getSnapPoint(event, layer)
+        mouse_point, snapped, snap_point, _ = self.getSnapPoint(event)
+        # bezier tool
         if self.mode == "bezier":
-            self.selected_idx = None
+            self.clicked_idx = None
             self.mouse_state = "free"
-        elif self.mode == "pen":
-            # ドロー終了
+        # freehand tool
+        elif self.mode == "freehand":
+            # convert drawing line to bezier line
             if self.mouse_state != "free":
-                self.convert_draw_line(snapped[4])
+                self.drawlineToBezier(snapped[4])
                 self.mouse_state = "free"
+        # split tool
         elif self.mode == "split":
-            self.selected_idx = None
+            self.clicked_idx = None
             self.mouse_state = "free"
+        # unsplit tool
         elif self.mode == "unsplit":
+            # if feature in selection, select feature
             self.isEmittingPoint = False
-            r = self.rectangle()
+            r = self.rectangleArea()
             if r is not None:
-                self.reset_unsplit()
+                self.resetUnsplit()
                 self.selectFeatures(mouse_point, r)
             else:
                 self.selectFeatures(mouse_point)
-        if self.m is not None:
-            self.m.showHandle(self.show_handle)
+        if self.bm is not None:
+            self.bm.show_handle(self.show_handle)
 
-    ####### イベント処理からの呼び出し
-    # ベジエ関係
-    def start_editing(self, layer, mouse_point):
+    def startEditing(self, layer, mouse_point):
+        """
+        convert feature to bezier line and start editing
+        """
+        ok = False
         near, f = self.getNearFeatures(layer, mouse_point)
         if near:
             ret = self.convertFeatureToBezier(f[0])
             if ret:
                 self.editing_feature_id = f[0].id()
-                self.editing = True
+                ok = True
+        return ok
 
-    def finish_editing(self, layer):
-        # 作成するオブジェクトをgeomに変換。修正するためのフィーチャーも取得
+    def finishEditing(self, layer):
+        """
+        convert bezier line to feature and finish editing
+        """
         layer_type = layer.geometryType()
         layer_wkbtype = layer.wkbType()
-        result, geom = self.b.asGeometry(layer_type, layer_wkbtype)
+        result, geom = self.bg.asGeometry(layer_type, layer_wkbtype)
         if result is None:
             continueFlag = False
         elif result is False:
@@ -360,10 +410,10 @@ class BezierEditingTool(QgsMapTool):
             else:
                 continueFlag = False
         else:
-            # 新規
+            # create new feature
             if self.editing_feature_id is None:
                 f, continueFlag = self.createFeature(geom, None, editmode=False)
-            # 修正
+            # modify the feature
             else:
                 feature = self.getFeatureById(layer, self.editing_feature_id)
                 if feature is None:
@@ -378,76 +428,79 @@ class BezierEditingTool(QgsMapTool):
                 else:
                     f, continueFlag = self.createFeature(geom, feature, editmode=True)
         if continueFlag is False:
-            self.resetPoints()
+            self.resetEditing()
         self.canvas.refresh()
 
-    # ペン関係
-    def convert_draw_line(self, snap_to_start):
-        geom = self.pen_rbl.asGeometry()
+    def drawlineToBezier(self, snap_to_start):
+        """
+        convert drawing line to bezier line
+        """
+        geom = self.freehand_rbl.asGeometry()
         d = self.canvas.mapUnitsPerPixel() * 10
-        self.b.modified_by_geometry(geom, d, snap_to_start)  # 編集箇所の次のハンドル以降を削除
-        self.m.showBezierLineMarkers()
-        self.pen_rbl.reset()
+        self.bg.modified_by_geometry(geom, d, snap_to_start)
+        self.bm.show()
+        self.freehand_rbl.reset()
 
-    # ポイント、ハンドルの配列、マーカー、ラインとベジエライン、履歴を初期化
-    def resetPoints(self):
-        self.m.removeBezierLineMarkers()
-        self.b.reset()
+    def resetEditing(self):
+        """
+        reset bezier setting
+        """
+        self.bm.reset()
+        self.bg.reset()
+        self.bg = None
+        self.bm = None
         self.editing_feature_id = None
         self.editing = False
 
-    # フィーチャをベジエ曲線のハンドルに変換
-    def convertFeatureToBezier(self, f):
-        geom = QgsGeometry(f.geometry())
-        self.check_crs()
+    def convertFeatureToBezier(self, feature):
+        """
+        convert feature to bezier line
+        """
+        ok = False
+        geom = QgsGeometry(feature.geometry())
+        self.checkCRS()
         if self.layerCRS.srsid() != self.projectCRS.srsid():
             geom.transform(QgsCoordinateTransform(self.layerCRS, self.projectCRS, QgsProject.instance()))
 
         if geom.type() == QgsWkbTypes.PointGeometry:
             point = geom.asPoint()
-
-            self.b = BezierGeometry.convertPointToBezier(point)
-            self.m = BezierMarker(self.canvas, self.b)
-            self.m.addAnchorMarker(0, point)
-            return True
+            self.bg = BezierGeometry.convertPointToBezier(point)
+            self.bm = BezierMarker(self.canvas, self.bg)
+            self.bm.add_anchor(0, point)
+            ok = True
         elif geom.type() == QgsWkbTypes.LineGeometry:
             geom.convertToSingleType()
             polyline = geom.asPolyline()
-
-            if len(polyline) % 10 != 1:
-                # 他のツールで編集されているのでベジエに変換できない。
-                # 編集されていても偶然、あまりが1になる場合は、変換してしまう。
+            self.bg = BezierGeometry.convertLineToBezier(polyline)
+            if self.bg is not None:
+                self.bm = BezierMarker(self.canvas, self.bg)
+                self.bm.show(self.show_handle)
+                ok = True
+            else:
                 QMessageBox.warning(None, "Warning", self.tr(u"The feature can't convert to bezier."))
-                return False
 
-            self.b = BezierGeometry.convertLineToBezier(polyline)
-            self.m = BezierMarker(self.canvas, self.b)
-            self.m.showBezierLineMarkers(self.show_handle)
-
-            return True
         elif geom.type() == QgsWkbTypes.PolygonGeometry:
             geom.convertToSingleType()
             polygon = geom.asPolygon()
-
-            if len(polygon) % 10 != 1:
-                # 他のツールで編集されているのでベジエに変換できない。
-                # 編集されていても偶然、あまりが1になる場合は、変換してしまう。
+            self.bg = BezierGeometry.convertPolygonToBezier(polygon)
+            if self.bg is not None:
+                self.bm = BezierMarker(self.canvas, self.bg)
+                self.bm.show(self.show_handle)
+                ok = True
+            else:
                 QMessageBox.warning(None, "Warning", self.tr(u"The feature can't convert to bezier."))
-                return False
-
-            self.b = BezierGeometry.convertPolygonToBezier(polygon)
-            self.m = BezierMarker(self.canvas, self.b)
-            self.m.showBezierLineMarkers(self.show_handle)
-
-            return True
         else:
             QMessageBox.warning(None, "Warning", self.tr(u"The layer geometry type doesn't support."))
-            return False
 
-    def createFeature(self, geom, feat, editmode=True, showdlg=True):
+        return ok
+
+    def createFeature(self, geom, feature, editmode=True, showdlg=True):
+        """
+        create or edit feature
+        """
         continueFlag = False
         layer = self.canvas.currentLayer()
-        self.check_crs()
+        self.checkCRS()
         if self.layerCRS.srsid() != self.projectCRS.srsid():
             geom.transform(QgsCoordinateTransform(self.projectCRS, self.layerCRS, QgsProject.instance()))
 
@@ -457,9 +510,9 @@ class BezierEditingTool(QgsMapTool):
         f.setGeometry(geom)
         # add attribute fields to feature
 
-        if feat is not None:
+        if feature is not None:
             for i in range(fields.count()):
-                f.setAttribute(i, feat.attributes()[i])
+                f.setAttribute(i, feature.attributes()[i])
 
         settings = QSettings()
         disable_attributes = settings.value("/qgis/digitizing/disable_enter_attribute_values_dialog", False, type=bool)
@@ -471,7 +524,7 @@ class BezierEditingTool(QgsMapTool):
                 # if using changeGeometry function, crashed... it's bug? So using add and delete
                 layer.beginEditCommand("Bezier edited")
                 layer.addFeature(f)
-                layer.deleteFeature(feat.id())
+                layer.deleteFeature(feature.id())
             layer.endEditCommand()
         else:
             if not editmode:
@@ -488,7 +541,7 @@ class BezierEditingTool(QgsMapTool):
                         continueFlag = True
             else:
                 layer.beginEditCommand("Bezier edited")
-                f = feat
+                f = feature
                 dlg = self.iface.getFeatureForm(layer, f)
                 ok = dlg.exec_()
                 if ok:
@@ -503,7 +556,55 @@ class BezierEditingTool(QgsMapTool):
                         continueFlag = True
         return f, continueFlag
 
-    def checkSnapToPoint(self, point, layer):
+    def undo(self):
+        """
+        undo bezier editing (add, move, delete , draw) for anchor and handle
+        """
+        history_length = self.bg.undo()
+        self.bm.show(self.show_handle)
+        if history_length == 0:
+            self.resetEditing()
+
+    def showHandle(self, checked):
+        """
+        change bezier handle visibility
+        """
+        self.show_handle = checked
+        self.bm.show_handle(checked)
+
+    def getSnapPoint(self, event):
+        """
+        return mouse point and snapped point list.
+        snapped point list is 0:map, 1:anchor, 2:handle, 3:bezier line, 4:start anchor
+        """
+        snap_idx = ["", "", "", "", ""]
+        snapped = [False, False, False, False, False]
+        snap_point = [None, None, None, None, None]
+
+        self.snap_mark.hide()
+        # snapしていない場合
+        mouse_point = self.toMapCoordinates(event.pos())
+        snapped[0], snap_point[0] = self.checkSnapToPoint(event.pos())
+
+        if self.bg is not None:
+            point = self.toMapCoordinates(event.pos())
+            d = self.canvas.mapUnitsPerPixel() * 4
+            snapped[1], snap_point[1], snap_idx[1] = self.bg.checkSnapToAnchor(point, self.clicked_idx, d)
+            if self.show_handle and self.mode == "bezier":
+                snapped[2], snap_point[2], snap_idx[2] = self.bg.checkSnapToHandle(point, d)
+            snapped[3], snap_point[3], snap_idx[3] = self.bg.checkSnapToLine(point, d)
+            snapped[4], snap_point[4], snap_idx[4] = self.bg.checkSnapToStart(point, d)
+
+        # show snap marker, but didn't show to line snap
+        for i in [0, 1, 2, 4]:
+            if snapped[i]:
+                self.snap_mark.setCenter(snap_point[i])
+                self.snap_mark.show()
+                break
+
+        return mouse_point, snapped, snap_point, snap_idx
+
+    def checkSnapToPoint(self, point):
         snapped = False
         snap_point = self.toMapCoordinates(point)
         if self.snapping:
@@ -514,36 +615,6 @@ class BezierEditingTool(QgsMapTool):
                 snapped = True
         return snapped, snap_point
 
-    # マウスがベジエのハンドルのどこにスナップしたか確認
-    def getSnapPoint(self, event, layer):
-        # どこにスナップしたか？のリスト、スナップしたポイント、線上にスナップした場合のポイントのidを返す
-        snap_idx = ["", "", "", "", ""]
-        snapped = [False, False, False, False, False]
-        snap_point = [None, None, None, None, None]
-
-        self.snap_mark.hide()
-        # snapしていない場合
-        mouse_point = self.toMapCoordinates(event.pos())
-        snapped[0], snap_point[0] = self.checkSnapToPoint(event.pos(), layer)
-        if self.editing:
-            point = self.toMapCoordinates(event.pos())
-            d = self.canvas.mapUnitsPerPixel() * 4
-            snapped[1], snap_point[1], snap_idx[1] = self.b.checkSnapToAnchor(point, self.selected_idx, d)
-            if self.show_handle and self.mode == "bezier":
-                snapped[2], snap_point[2], snap_idx[2] = self.b.checkSnapToHandle(point, d)
-            snapped[3], snap_point[3], snap_idx[3] = self.b.checkSnapToLine(point, d)
-            snapped[4], snap_point[4], snap_idx[4] = self.b.checkSnapToStart(point, d)
-
-        # スナップマーカーの表示. ラインへのスナップは表示しない
-        for i in [0, 1, 2, 4]:
-            if snapped[i]:
-                self.snap_mark.setCenter(snap_point[i])
-                self.snap_mark.show()
-                break
-
-        return mouse_point, snapped, snap_point, snap_idx
-
-    # フィーチャーIDからフィーチャを返す
     def getFeatureById(self, layer, featid):
         features = [f for f in layer.getFeatures(QgsFeatureRequest().setFilterFids([featid]))]
         if len(features) != 1:
@@ -551,18 +622,16 @@ class BezierEditingTool(QgsMapTool):
         else:
             return features[0]
 
-    # ポイントまたは矩形から近いフィーチャを返す
     def getNearFeatures(self, layer, point, rect=None):
         if rect is None:
             d = self.canvas.mapUnitsPerPixel() * 4
             rect = QgsRectangle((point.x() - d), (point.y() - d), (point.x() + d), (point.y() + d))
-        self.check_crs()
+        self.checkCRS()
         if self.layerCRS.srsid() != self.projectCRS.srsid():
             rectGeom = QgsGeometry.fromRect(rect)
             rectGeom.transform(QgsCoordinateTransform(self.projectCRS, self.layerCRS, QgsProject.instance()))
             rect = rectGeom.boundingBox()
         request = QgsFeatureRequest()
-        # request.setLimit(1)
         request.setFilterRect(rect)
         f = [feat for feat in layer.getFeatures(request)]
         if len(f) == 0:
@@ -570,31 +639,19 @@ class BezierEditingTool(QgsMapTool):
         else:
             return True, f
 
-    # アンドゥ処理
-    def undo(self):
-        history_length = self.b.undo()
-        self.m.showBezierLineMarkers(self.show_handle)
-        if history_length == 0:
-            self.resetPoints()
-
-    def showHandle(self, checked):
-        self.show_handle = checked
-        self.m.showHandle(checked)
-
-    def check_snapsetting(self):
+    def checkSnapSetting(self):
         snap_cfg = self.iface.mapCanvas().snappingUtils().config()
         if snap_cfg.enabled():
             self.snapping = True
         else:
             self.snapping = False
 
-    def check_crs(self):
+    def checkCRS(self):
         self.layerCRS = self.canvas.currentLayer().crs()
         self.projectCRS = self.canvas.mapSettings().destinationCrs()
         if self.projectCRS.projectionAcronym() == "longlat":
             QMessageBox.warning(None, "Warning", self.tr(u"Change to project's CRS from latlon."))
 
-    # unsplit 関係
     def selectFeatures(self, point, rect=None):
         # layers = QgsMapLayerRegistry.instance().mapLayers().values()
         layers = QgsProject.instance().layerTreeRoot().findLayers()
@@ -623,7 +680,7 @@ class BezierEditingTool(QgsMapTool):
         self.rubberBand.addPoint(point4, True)  # true to update canvas
         self.rubberBand.show()
 
-    def rectangle(self):
+    def rectangleArea(self):
         if self.startPoint is None or self.endPoint is None:
             return None
         elif self.startPoint.x() == self.endPoint.x() or self.startPoint.y() == self.endPoint.y():
@@ -631,29 +688,29 @@ class BezierEditingTool(QgsMapTool):
 
         return QgsRectangle(self.startPoint, self.endPoint)
 
-    def selectNearFeature(self, layer, pnt, rect=None):
+    def selectNearFeature(self, layer, point, rect=None):
         if rect is not None:
             layer.removeSelection()
-        near, features = self.getNearFeatures(layer, pnt, rect)
+        near, features = self.getNearFeatures(layer, point, rect)
         if near:
             fids = [f.id() for f in features]
             if rect is not None:
                 layer.selectByIds(fids)
             else:
                 for fid in fids:
-                    if self.IsSelected(layer, fid):
+                    if self.isSelected(layer, fid):
                         layer.deselect(fid)
                     else:
                         layer.select(fid)
         return near
 
-    def IsSelected(self, layer, fid):
+    def isSelected(self, layer, fid):
         for sid in layer.selectedFeatureIds():
             if sid == fid:
                 return True
         return False
 
-    def reset_unsplit(self):
+    def resetUnsplit(self):
         self.startPoint = self.endPoint = None
         self.isEmittingPoint = False
         self.rubberBand.reset(QgsWkbTypes.PolygonGeometry)
@@ -664,6 +721,9 @@ class BezierEditingTool(QgsMapTool):
         return math.sqrt(dx * dx + dy * dy)
 
     def unsplit(self):
+        """
+        unsplit selected two feature.it needs the feature can convert to bezier line.
+        """
         layer = self.canvas.currentLayer()
         if layer.geometryType() == QgsWkbTypes.LineGeometry:
             selected_features = layer.selectedFeatures()
@@ -676,7 +736,8 @@ class BezierEditingTool(QgsMapTool):
                 geom1.convertToSingleType()
                 line0 = geom0.asPolyline()
                 line1 = geom1.asPolyline()
-                # 端点のすべての組み合わせから距離が最小の点と点をくっつける
+
+                # Connect points with the smallest distance from all combinations of endpoints
                 dist = [self.distance(li0, li1) for li0, li1 in
                         [(line0[-1], line1[0]), (line0[0], line1[-1]), (line0[0], line1[0]), (line0[-1], line1[-1])]]
                 type = dist.index(min(dist))
@@ -689,10 +750,10 @@ class BezierEditingTool(QgsMapTool):
                     line0.reverse()
                 elif type == 3:
                     line1.reverse()
-                # 端点が同じ位置なら
+                # if endpoints are same position
                 if line0[-1] == line1[0]:
                     line = line0 + line1[1:]
-                # 端点が離れている場合は、間を直線のベジエで補間
+                # If the end points are separated, the are interpolated using Bezier line
                 else:
                     b = BezierGeometry()
                     b.add_anchor(0, line0[-1], undo=False)
@@ -729,10 +790,10 @@ class BezierEditingTool(QgsMapTool):
 
     def activate(self):
         self.canvas.setCursor(self.addanchor_cursor)
-        self.check_snapsetting()
-        self.check_crs()
+        self.checkSnapSetting()
+        self.checkCRS()
         self.snap_mark.hide()
-        self.reset_unsplit()
+        self.resetUnsplit()
 
     def deactivate(self):
         pass

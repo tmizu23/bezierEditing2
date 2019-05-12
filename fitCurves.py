@@ -3,6 +3,7 @@
     by Philip J. Schneider
     "Graphics Gems", Academic Press, 1990
 """
+
 from __future__ import print_function
 from numpy import *
 from . import bezier

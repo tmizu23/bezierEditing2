@@ -1,5 +1,20 @@
 # -*- coding: utf-8 -*-
-
+""""
+/***************************************************************************
+    BezierEditing
+     --------------------------------------
+    Date                 : 01 05 2019
+    Copyright            : (C) 2019 Takayuki Mizutani
+    Email                : mizutani at ecoris dot co dot jp
+ ***************************************************************************
+ *                                                                         *
+ *   This program is free software; you can redistribute it and/or modify  *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation; either version 2 of the License, or     *
+ *   (at your option) any later version.                                   *
+ *                                                                         *
+ ***************************************************************************/
+"""
 from qgis.core import *
 from .fitCurves import *
 import copy
@@ -17,16 +32,19 @@ class BezierGeometry:
 
     @classmethod
     def convertPointToBezier(cls, point):
-        b = cls()
-        b._addAnchor(0, point)
-        return b
+        bg = cls()
+        bg._addAnchor(0, point)
+        return bg
 
     @classmethod
     def convertLineToBezier(cls, polyline):
-        b = cls()
-        point_list = b._pointList(polyline)
+        bg = cls()
+        # if polyline length isn't match cause of edited other tool, it can't convert to bezier line
+        if len(polyline) % bg.INTERPORATION != 1:
+            return None
+        point_list = bg._pointList(polyline)
         for i, points_i in enumerate(point_list):
-            ps, cs, pe, ce = b._invertBezier(points_i)
+            ps, cs, pe, ce = bg._invertBezier(points_i)
             p0 = QgsPointXY(ps[0], ps[1])
             p1 = QgsPointXY(pe[0], pe[1])
             c0 = QgsPointXY(ps[0], ps[1])
@@ -34,25 +52,28 @@ class BezierGeometry:
             c2 = QgsPointXY(ce[0], ce[1])
             c3 = QgsPointXY(pe[0], pe[1])
             if i == 0:
-                b._addAnchor(-1, p0)
-                b._moveHandle(i * 2, c0)
-                b._moveHandle(i * 2 + 1, c1)
-                b._addAnchor(-1, p1)
-                b._moveHandle((i + 1) * 2, c2)
-                b._moveHandle((i + 1) * 2 + 1, c3)
+                bg._addAnchor(-1, p0)
+                bg._moveHandle(i * 2, c0)
+                bg._moveHandle(i * 2 + 1, c1)
+                bg._addAnchor(-1, p1)
+                bg._moveHandle((i + 1) * 2, c2)
+                bg._moveHandle((i + 1) * 2 + 1, c3)
             else:
-                b._moveHandle(i * 2 + 1, c1)
-                b._addAnchor(-1, p1)
-                b._moveHandle((i + 1) * 2, c2)
-                b._moveHandle((i + 1) * 2 + 1, c3)
+                bg._moveHandle(i * 2 + 1, c1)
+                bg._addAnchor(-1, p1)
+                bg._moveHandle((i + 1) * 2, c2)
+                bg._moveHandle((i + 1) * 2 + 1, c3)
 
-        return b
+        return bg
 
     @classmethod
     def convertPolygonToBezier(cls, polygon):
-        b = cls()
-        b = b.convertLineToBezier(polygon[0])
-        return b
+        bg = cls()
+        # if polygon length isn't match cause of edited other tool, it can't convert to bezier line
+        if len(polygon) % self.INTERPORATION != 1:
+            return None
+        bg = bg.convertLineToBezier(polygon[0])
+        return bg
 
     def asGeometry(self, layer_type, layer_wkbtype):
         result = None
@@ -162,22 +183,22 @@ class BezierGeometry:
         # 1点もなくて、ラインを書く場合
         elif self.anchorCount() == 1 and len(self.history) == 0 and len(update_line) > 2:
             self._deleteAnchor(0)
-            self.history.append({"state": "start_pen"})
+            self.history.append({"state": "start_freehand"})
             geom = self._smoothingGeometry(update_line)
             pointnum, _, _ = self._addGeometryToBezier(geom, 0, last=True)
             self.history.append(
                 {"state": "insert_geom", "pointidx": 0, "pointnum": pointnum, "cp_first": None,
                  "cp_last": None})
-            self.history.append({"state": "end_pen", "direction": "forward"})
+            self.history.append({"state": "end_freehand", "direction": "forward"})
         # 1点あって、ラインで修正する場合
         elif self.anchorCount() == 1 and len(self.history) > 0 and len(update_line) > 2:
-            self.history.append({"state": "start_pen"})
+            self.history.append({"state": "start_freehand"})
             geom = self._smoothingGeometry(update_line)
             pointnum, _, _ = self._addGeometryToBezier(geom, 1, last=True)
             self.history.append(
                 {"state": "insert_geom", "pointidx": 1, "pointnum": pointnum, "cp_first": None,
                  "cp_last": None})
-            self.history.append({"state": "end_pen", "direction": "forward"})
+            self.history.append({"state": "end_freehand", "direction": "forward"})
         # ラインをラインで修正する場合
         else:
             startpnt = update_line[0]
@@ -190,7 +211,7 @@ class BezierGeometry:
             v2 = np.array(update_line[1]) - np.array(update_line[0])
             direction = np.dot(v1, v2)
 
-            self.history.append({"state": "start_pen"})
+            self.history.append({"state": "start_freehand"})
             # 逆方向ならbezier_lineとベジエを定義しているのアンカー、ハンドル関連のリストを逆順にする
             if direction < 0:
                 self._flipBezierLine()
@@ -254,7 +275,7 @@ class BezierGeometry:
                     {"state": "insert_geom", "pointidx": start_anchoridx, "pointnum": pointnum, "cp_first": cp_first,
                      "cp_last": cp_last})
 
-            self.history.append({"state": "end_pen", "direction": "forward"})
+            self.history.append({"state": "end_freehand", "direction": "forward"})
             # ベジエの方向を元に戻す
             if direction < 0:
                 self._flipBezierLine()
@@ -381,12 +402,12 @@ class BezierGeometry:
             elif act["state"] == "flip_line":
                 self._flipBezierLine()
                 self.undo()
-            elif act["state"] == "end_pen":
+            elif act["state"] == "end_freehand":
                 direction = act["direction"]
                 if direction == "reverse":
                     self._flipBezierLine()
                 act = self.history.pop()
-                while act["state"] != "start_pen":
+                while act["state"] != "start_freehand":
                     if act["state"] == "insert_geom":
                         for i in range(act["pointnum"]):
                             self._deleteAnchor(act["pointidx"])
@@ -684,16 +705,20 @@ class BezierGeometry:
 
     # ポインタの次のアンカーのidとvertexのidを返す。アンカーとスナップしている場合は、次のIDを返す。右端のアンカーの処理は注意
     def _closestAnchorOfGeometry(self, point, geom, d):
+        """
+
+        """
         near = False
         (dist, minDistPoint, vertexidx, leftOf) = geom.closestSegmentWithContext(point)
         anchoridx = self._AnchorIdx(vertexidx)
-        # d = self.canvas.mapUnitsPerPixel() * 10
         if math.sqrt(dist) < d:
             near = True
         return near, anchoridx, vertexidx
 
-    # 移動平均でスムージング
     def _smoothing(self, polyline):
+        """
+        smoothing by moving average
+        """
         poly = np.reshape(polyline, (-1, 2)).T
         num = 8
         b = np.ones(num) / float(num)
@@ -707,15 +732,9 @@ class BezierGeometry:
     def _smoothingGeometry(self, polyline):
         polyline = self._smoothing(polyline)
         geom = QgsGeometry.fromPolylineXY(polyline)
-        # simplifyするとベジエ化でおかしくなる場合がある。端の点が移動するため？
-
-        # d = self.canvas.mapUnitsPerPixel()
-        # geom = geom.simplify(self.tolerance * d)
-        # self.test2_rbl.reset(QgsWkbTypes.LineGeometry)
-        # for point in geom.asPolyline():
-        #     self.test2_rbl.addPoint(point)
         return geom
 
+    # for debug
     def dump_history(self):
         self.log("##### history dump ######")
         for h in self.history:

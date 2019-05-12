@@ -1,7 +1,7 @@
 <RCC>
-    <qresource prefix="/plugins/bezierEditing" >
+    <qresource prefix="/plugins/BezierEditing" >
         <file>icon/beziericon.svg</file>
-        <file>icon/penicon.svg</file>
+        <file>icon/freehandicon.svg</file>
         <file>icon/spliticon.svg</file>
         <file>icon/unspliticon.svg</file>
         <file>icon/showhandleicon.svg</file>
