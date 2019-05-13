@@ -399,8 +399,10 @@ class BezierEditingTool(QgsMapTool):
         layer_type = layer.geometryType()
         layer_wkbtype = layer.wkbType()
         result, geom = self.bg.asGeometry(layer_type, layer_wkbtype)
+        # no geometry to convert
         if result is None:
             continueFlag = False
+        # the layer geometry type is different
         elif result is False:
             reply = QMessageBox.question(None, "Question", self.tr(
                 u"The layer geometry type is different. Do you want to continue editing?"), QMessageBox.Yes,
