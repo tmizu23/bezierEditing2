@@ -40,22 +40,22 @@ class BezierEditing(object):
         self.beziertool = BezierEditingTool(self.canvas, self.iface)
 
         # Create bezier action
-        self.bezier_edit = QAction(QIcon(":/plugins/BezierEditing/icon/beziericon.svg"), "Bezier_editing",
+        self.bezier_edit = QAction(QIcon(":/plugins/BezierEditing/icon/beziericon.svg"), "Bezier_Editing",
                                    self.iface.mainWindow())
-        self.bezier_edit.setObjectName("BezierEditing_bezier_edit")
+        self.bezier_edit.setObjectName("BezierEditing_edit")
         self.bezier_edit.setEnabled(False)
         self.bezier_edit.setCheckable(True)
         self.bezier_edit.triggered.connect(self.bezierediting)
         self.toolbar.addAction(self.bezier_edit)
 
         # Create freehand action
-        self.freehand_edit = QAction(QIcon(":/plugins/BezierEditing/icon/freehandicon.svg"), "Bezier_Freehand editing",
+        self.freehand = QAction(QIcon(":/plugins/BezierEditing/icon/freehandicon.svg"), "Bezier_Freehand",
                                 self.iface.mainWindow())
-        self.freehand_edit.setObjectName("BezierEditing_freehand_edit")
-        self.freehand_edit.setEnabled(False)
-        self.freehand_edit.setCheckable(True)
-        self.freehand_edit.triggered.connect(self.freehandediting)
-        self.toolbar.addAction(self.freehand_edit)
+        self.freehand.setObjectName("BezierEditing_freehand")
+        self.freehand.setEnabled(False)
+        self.freehand.setCheckable(True)
+        self.freehand.triggered.connect(self.freehandediting)
+        self.toolbar.addAction(self.freehand)
 
         # Create split action
         self.split = QAction(QIcon(":/plugins/BezierEditing/icon/spliticon.svg"), "Bezier_Split",
@@ -76,7 +76,7 @@ class BezierEditing(object):
         self.toolbar.addAction(self.unsplit)
 
         # Create show anchor option
-        self.show_handle = QAction(QIcon(":/plugins/BezierEditing/icon/showhandleicon.svg"), "Bezier_Show Anchor",
+        self.show_handle = QAction(QIcon(":/plugins/BezierEditing/icon/showhandleicon.svg"), "Bezier_Show_Anchor",
                                    self.iface.mainWindow())
         self.show_handle.setObjectName("BezierEditing_show_handle")
         self.show_handle.setCheckable(True)
@@ -102,7 +102,7 @@ class BezierEditing(object):
 
     def freehandediting(self):
         self.canvas.setMapTool(self.beziertool)
-        self.freehand_edit.setChecked(True)
+        self.freehand.setChecked(True)
         self.beziertool.mode = "freehand"
 
     def spliting(self):
@@ -126,7 +126,7 @@ class BezierEditing(object):
 
         if layer.isEditable() and layer.type() == QgsMapLayer.VectorLayer:
             self.bezier_edit.setEnabled(True)
-            self.freehand_edit.setEnabled(True)
+            self.freehand.setEnabled(True)
             self.split.setEnabled(True)
             self.unsplit.setEnabled(True)
             self.show_handle.setEnabled(True)
@@ -143,7 +143,7 @@ class BezierEditing(object):
                 pass
         else:
             self.bezier_edit.setEnabled(False)
-            self.freehand_edit.setEnabled(False)
+            self.freehand.setEnabled(False)
             self.split.setEnabled(False)
             self.unsplit.setEnabled(False)
             self.show_handle.setEnabled(False)
@@ -162,13 +162,13 @@ class BezierEditing(object):
 
     def deactivate(self):
         self.bezier_edit.setChecked(False)
-        self.freehand_edit.setChecked(False)
+        self.freehand.setChecked(False)
         self.split.setChecked(False)
         self.unsplit.setChecked(False)
 
     def unload(self):
         self.toolbar.removeAction(self.bezier_edit)
-        self.toolbar.removeAction(self.freehand_edit)
+        self.toolbar.removeAction(self.freehand)
         self.toolbar.removeAction(self.split)
         self.toolbar.removeAction(self.unsplit)
         self.toolbar.removeAction(self.show_handle)

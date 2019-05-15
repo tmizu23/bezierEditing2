@@ -572,7 +572,8 @@ class BezierEditingTool(QgsMapTool):
         change bezier handle visibility
         """
         self.show_handle = checked
-        self.bm.show_handle(checked)
+        if self.bm is not None:
+            self.bm.show_handle(checked)
 
     def getSnapPoint(self, event):
         """

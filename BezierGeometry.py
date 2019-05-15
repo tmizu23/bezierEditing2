@@ -71,7 +71,7 @@ class BezierGeometry:
     def convertPolygonToBezier(cls, polygon):
         bg = cls()
         # if polygon length isn't match cause of edited other tool, it can't convert to bezier line
-        if len(polygon) % self.INTERPOLATION != 1:
+        if len(polygon) % bg.INTERPOLATION != 1:
             return None
         bg = bg.convertLineToBezier(polygon[0])
         return bg
